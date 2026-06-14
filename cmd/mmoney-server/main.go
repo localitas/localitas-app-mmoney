@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -11,8 +10,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/localitas/localitas-app-mmoney"
+	mmoney "github.com/localitas/localitas-app-mmoney"
 	"github.com/localitas/localitas-go"
+	"github.com/urfave/cli/v3"
 )
 
 var (
@@ -28,57 +28,87 @@ func envOrFileToken() string {
 }
 
 func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "version") {
-		fmt.Printf("mmoney-server %s (commit: %s)\n", version, commit)
-		os.Exit(0)
+	app := &cli.Command{
+		Name:    "mmoney-server",
+		Usage:   "MMoney app server",
+		Version: version,
+		Commands: []*cli.Command{
+			serveCommand(),
+			migrateCommand(),
+		},
+		DefaultCommand: "serve",
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			return serveAction(ctx, cmd)
+		},
 	}
 
-	var (
-		listen   = flag.String("listen", ":0", "listen address")
-		coreURL  = flag.String("core-url", client.DefaultCoreURL(), "base URL of the Localitas core API")
-		basePath = flag.String("base-path", "/", "URL prefix for <base href>")
-		token    = flag.String("token", envOrFileToken(), "bearer token")
-	)
-	flag.Parse()
-
-	ctx := context.Background()
-	c := client.New(*coreURL)
-	if *token != "" {
-		c = c.WithToken(*token)
+	if err := app.Run(context.Background(), os.Args); err != nil {
+		log.Fatal(err)
 	}
+}
 
-	app := mmoney.New(c, *basePath)
+func commonFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{Name: "listen", Value: ":0", Usage: "listen address"},
+		&cli.StringFlag{Name: "core-url", Value: client.DefaultCoreURL(), Usage: "base URL of the Localitas core API"},
+		&cli.StringFlag{Name: "base-path", Value: "/", Usage: "URL prefix for <base href>"},
+		&cli.StringFlag{Name: "token", Value: envOrFileToken(), Usage: "bearer token for API calls"},
+	}
+}
 
-	dbID, err := app.Install(ctx)
+func newClient(cmd *cli.Command) *client.Client {
+	c := client.New(cmd.String("core-url"))
+	if t := cmd.String("token"); t != "" {
+		c = c.WithToken(t)
+	}
+	return c
+}
+
+func serveCommand() *cli.Command {
+	return &cli.Command{
+		Name:   "serve",
+		Usage:  "Start the MMoney server",
+		Flags:  commonFlags(),
+		Action: serveAction,
+	}
+}
+
+func serveAction(ctx context.Context, cmd *cli.Command) error {
+	coreURL := cmd.String("core-url")
+	basePath := cmd.String("base-path")
+	token := cmd.String("token")
+	c := newClient(cmd)
+
+	a := mmoney.New(c, basePath)
+
+	dbID, err := a.Install(ctx)
 	if err != nil {
-		log.Fatalf("install: %v", err)
+		return fmt.Errorf("install: %w", err)
 	}
 	log.Printf("MMoney database ready: %s", dbID)
 
-	if err := app.InitStore(*coreURL, dbID, *token); err != nil {
-		log.Fatalf("init store: %v", err)
+	if err := a.InitStore(coreURL, dbID, token); err != nil {
+		return fmt.Errorf("init store: %w", err)
 	}
-	defer app.Store.Close()
+	defer a.Store.Close()
 
-	app.SetCoreAccess(*coreURL, *token)
+	a.SetCoreAccess(coreURL, token)
 
 	mux := http.NewServeMux()
-	app.RegisterRoutes(mux)
+	a.RegisterRoutes(mux)
 	mux.HandleFunc("GET /health.json", mmoney.HandleHealth)
 
-	ln, err := net.Listen("tcp", *listen)
+	ln, err := net.Listen("tcp", cmd.String("listen"))
 	if err != nil {
-		log.Fatalf("listen: %v", err)
+		return fmt.Errorf("listen: %w", err)
 	}
 	addr := ln.Addr().(*net.TCPAddr)
-	appURL := fmt.Sprintf("http://localhost:%d", addr.Port)
-	fmt.Printf("mmoney-server listening on %s\n", appURL)
+	fmt.Printf("mmoney-server listening on http://localhost:%d\n", addr.Port)
 
-	if err := c.RegisterService(ctx, "mmoney", appURL); err != nil {
+	selfURL := fmt.Sprintf("http://localhost:%d", addr.Port)
+	if err := c.RegisterService(ctx, "mmoney", selfURL); err != nil {
 		log.Printf("service registry failed: %v", err)
 	}
-
-	mmoney.RegisterSyncAutomation(*coreURL, *token, appURL)
 
 	shutdown, err := mmoney.BroadcastMDNS(addr.Port, mmoney.DefaultHealth.Name)
 	if err != nil {
@@ -89,13 +119,30 @@ func main() {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
+		log.Println("shutting down...")
 		if shutdown != nil {
 			shutdown()
 		}
 		os.Exit(0)
 	}()
 
-	if err := http.Serve(ln, mux); err != nil {
-		log.Fatalf("serve: %v", err)
+	return http.Serve(ln, mux)
+}
+
+func migrateCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "migrate",
+		Usage: "Run database migrations without starting the server",
+		Flags: commonFlags(),
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			c := newClient(cmd)
+			a := mmoney.New(c, "/")
+			dbID, err := a.Install(ctx)
+			if err != nil {
+				return fmt.Errorf("migrate: %w", err)
+			}
+			log.Printf("MMoney migrations complete (database: %s)", dbID)
+			return nil
+		},
 	}
 }
