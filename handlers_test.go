@@ -27,7 +27,7 @@ func setupTestApp(t *testing.T) *App {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	schema, err := os.ReadFile("migrations/20260613-000000-000-init.sql")
+	schema, err := os.ReadFile("_migrations/20260613-000000-000-init.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,7 +35,7 @@ func setupTestApp(t *testing.T) *App {
 		t.Fatal(err)
 	}
 
-	perf, err := os.ReadFile("migrations/20260613-010000-000-investment-performance.sql")
+	perf, err := os.ReadFile("_migrations/20260613-010000-000-investment-performance.sql")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func setupTestApp(t *testing.T) *App {
 		db.Exec(stmt)
 	}
 
-	al, _ := os.ReadFile("migrations/20260613-020000-000-asset-liability-snapshots.sql")
+	al, _ := os.ReadFile("_migrations/20260613-020000-000-asset-liability-snapshots.sql")
 	db.Exec(string(al))
 
 	store := NewStore(db)
