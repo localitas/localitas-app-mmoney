@@ -1,0 +1,10 @@
+mutation SetBudget($input: SetBudgetMutationInput!) {
+  setBudget(input: $input) {
+    budget {
+      category {
+        name
+      }
+      planned
+    }
+  }
+}

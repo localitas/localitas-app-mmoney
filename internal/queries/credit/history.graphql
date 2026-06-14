@@ -1,0 +1,35 @@
+query GetCreditScoreSnapshots {
+  me {
+    id
+  }
+  myHousehold {
+    id
+    users {
+      id
+      name
+      displayName
+      profilePictureUrl
+    }
+  }
+  spinwheelUser {
+    id
+    user {
+      id
+      name
+      displayName
+    }
+    onboardingStatus
+    onboardingErrorMessage
+    spinwheelUserId
+    creditScoreRefreshSubscriptionId
+    creditScoreTrackingStatus
+    isBillSyncTrackingEnabled
+  }
+  creditScoreSnapshots {
+    reportedDate
+    score
+    user {
+      id
+    }
+  }
+}

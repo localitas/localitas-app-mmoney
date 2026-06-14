@@ -1,0 +1,10 @@
+mutation Common_CreateTransactionMutation($input: CreateTransactionMutationInput!) {
+  createTransaction(input: $input) {
+    transaction {
+      id
+    }
+    errors {
+      message
+    }
+  }
+}

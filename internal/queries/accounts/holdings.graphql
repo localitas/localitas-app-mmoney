@@ -1,0 +1,23 @@
+query Web_GetHoldings {
+  portfolio {
+    aggregateHoldings {
+      edges {
+        node {
+          id
+          quantity
+          basis
+          totalValue
+          holdings {
+            id
+            quantity
+            name
+            ticker
+            account {
+              id
+            }
+          }
+        }
+      }
+    }
+  }
+}

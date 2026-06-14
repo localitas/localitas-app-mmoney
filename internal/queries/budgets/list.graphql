@@ -1,0 +1,34 @@
+query GetJointPlanningData($startDate: Date!, $endDate: Date!) {
+  budgetData(startMonth: $startDate, endMonth: $endDate) {
+    monthlyAmountsByCategory {
+      category {
+        id
+        name
+      }
+      monthlyAmounts {
+        month
+        plannedCashFlowAmount
+        plannedSetAsideAmount
+        actualAmount
+        remainingAmount
+        previousMonthRolloverAmount
+        rolloverType
+      }
+    }
+    monthlyAmountsByCategoryGroup {
+      categoryGroup {
+        id
+        name
+        type
+      }
+      monthlyAmounts {
+        month
+        plannedCashFlowAmount
+        actualAmount
+        remainingAmount
+        previousMonthRolloverAmount
+        rolloverType
+      }
+    }
+  }
+}

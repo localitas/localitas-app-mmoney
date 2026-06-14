@@ -1,0 +1,14 @@
+mutation Web_SetTransactionTags($input: SetTransactionTagsInput!) {
+  setTransactionTags(input: $input) {
+    errors {
+      message
+    }
+    transaction {
+      id
+      tags {
+        id
+        name
+      }
+    }
+  }
+}

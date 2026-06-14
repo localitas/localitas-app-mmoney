@@ -1,0 +1,67 @@
+query GetTransactionsList($offset: Int, $limit: Int, $filters: TransactionFilterInput) {
+  allTransactions(filters: $filters) {
+    totalCount
+    results(offset: $offset, limit: $limit) {
+      id
+      amount
+      pending
+      date
+      hideFromReports
+      dataProviderDescription
+      plaidName
+      notes
+      isRecurring
+      reviewStatus
+      needsReview
+      attachments {
+        id
+        extension
+        filename
+        originalAssetUrl
+        publicId
+        sizeBytes
+      }
+      isSplitTransaction
+      createdAt
+      updatedAt
+      category {
+        id
+        name
+        group {
+          id
+          name
+          type
+        }
+      }
+      merchant {
+        name
+        id
+        transactionsCount
+      }
+      account {
+        id
+        displayName
+        order
+        type {
+          group
+        }
+      }
+      ownedByUser {
+        displayName
+      }
+      goal {
+        id
+        name
+      }
+      tags {
+        id
+        name
+        color
+        order
+      }
+    }
+  }
+  transactionRules {
+    id
+  }
+}

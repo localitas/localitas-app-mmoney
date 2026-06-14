@@ -1,0 +1,136 @@
+package monarchgql
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/localitas/localitas-app-mmoney/internal/monarcherr"
+)
+
+const DefaultUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
+
+func UserAgent() string {
+	if ua := os.Getenv("MONARCH_USER_AGENT"); ua != "" {
+		return ua
+	}
+	return DefaultUserAgent
+}
+
+const maxResponseBody = 50 * 1024 * 1024
+const maxRetries = 3
+
+type Request struct {
+	OperationName string                 `json:"operationName"`
+	Query         string                 `json:"query"`
+	Variables     map[string]interface{} `json:"variables"`
+}
+
+type Client struct {
+	Endpoint string
+	Token    string
+	HTTP     *http.Client
+}
+
+func (c *Client) TokenValue() string {
+	return c.Token
+}
+
+func NewClient(endpoint, token string, timeout time.Duration) *Client {
+	return &Client{
+		Endpoint: endpoint,
+		Token:    token,
+		HTTP:     &http.Client{Timeout: timeout},
+	}
+}
+
+func (c *Client) Do(ctx context.Context, reqBody *Request, result interface{}) error {
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(1<<uint(attempt-1)) * 500 * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return monarcherr.New(monarcherr.NetworkTimeout, "request cancelled during retry backoff", monarcherr.CatNetwork, false, ctx.Err())
+			case <-time.After(backoff):
+			}
+		}
+
+		lastErr = c.doOnce(ctx, reqBody, result)
+		if lastErr == nil {
+			return nil
+		}
+
+		if e, ok := lastErr.(*monarcherr.Error); ok && e.Retryable {
+			continue
+		}
+		return lastErr
+	}
+	return lastErr
+}
+
+func (c *Client) doOnce(ctx context.Context, reqBody *Request, result interface{}) error {
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return monarcherr.New(monarcherr.InternalError, "failed to marshal request", monarcherr.CatInternal, false, err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.Endpoint, bytes.NewBuffer(body))
+	if err != nil {
+		return monarcherr.New(monarcherr.InternalError, "failed to create request", monarcherr.CatInternal, false, err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Client-Platform", "web")
+	req.Header.Set("User-Agent", UserAgent())
+	if c.Token != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Token %s", c.Token))
+	}
+
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return monarcherr.New(monarcherr.NetworkUnreachable, "failed to reach Monarch API", monarcherr.CatNetwork, true, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == 401 {
+		return monarcherr.New(monarcherr.AuthSessionExpired, "session token expired or invalid", monarcherr.CatAuth, true, nil)
+	}
+
+	if resp.StatusCode != 200 {
+		return monarcherr.New(monarcherr.APIError, fmt.Sprintf("API returned status %d", resp.StatusCode), monarcherr.CatAPI, false, nil)
+	}
+
+	respData, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
+	if err != nil {
+		return monarcherr.New(monarcherr.InternalError, "failed to read response body", monarcherr.CatInternal, false, err)
+	}
+
+	var gqlResp struct {
+		Data   interface{} `json:"data"`
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	gqlResp.Data = result
+
+	if err := json.Unmarshal(respData, &gqlResp); err != nil {
+		return monarcherr.New(monarcherr.APISchemaChanged, "failed to parse GraphQL response", monarcherr.CatAPI, false, err)
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		msgs := make([]string, len(gqlResp.Errors))
+		for i, e := range gqlResp.Errors {
+			msgs[i] = e.Message
+		}
+		return monarcherr.New(monarcherr.APIError, strings.Join(msgs, "; "), monarcherr.CatAPI, false, nil)
+	}
+
+	return nil
+}

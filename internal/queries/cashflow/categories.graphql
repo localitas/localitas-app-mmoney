@@ -1,0 +1,17 @@
+query GetCashflowCategories($filters: TransactionFilterInput) {
+  aggregates(filters: $filters, groupBy: ["category"]) {
+    groupBy {
+      category {
+        id
+        name
+        group {
+          id
+          type
+        }
+      }
+    }
+    summary {
+      sum
+    }
+  }
+}

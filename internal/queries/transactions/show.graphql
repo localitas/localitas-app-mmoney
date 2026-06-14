@@ -1,0 +1,42 @@
+query GetTransaction($id: UUID!) {
+  getTransaction(id: $id) {
+    id
+    amount
+    pending
+    date
+    hideFromReports
+    plaidName
+    notes
+    isRecurring
+    reviewStatus
+    needsReview
+    isSplitTransaction
+    createdAt
+    updatedAt
+    attachments {
+      id
+      extension
+      filename
+      originalAssetUrl
+      sizeBytes
+    }
+    category {
+      id
+      name
+    }
+    merchant {
+      id
+      name
+    }
+    account {
+      id
+      displayName
+    }
+    tags {
+      id
+      name
+      color
+      order
+    }
+  }
+}

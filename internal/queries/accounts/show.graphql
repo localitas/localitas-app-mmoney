@@ -1,0 +1,39 @@
+query GetAccount($id: UUID!) {
+  account(id: $id) {
+    id
+    displayName
+    type {
+      name
+      display
+    }
+    subtype {
+      name
+      display
+    }
+    displayBalance
+    currentBalance
+    limit
+    dataProviderCreditLimit
+    updatedAt
+    displayLastUpdatedAt
+    deactivatedAt
+    isHidden
+    isAsset
+    mask
+    createdAt
+    includeInNetWorth
+    hideFromList
+    hideTransactionsFromReports
+    includeBalanceInNetWorth
+    includeInGoalBalance
+    dataProvider
+    dataProviderAccountId
+    isManual
+    transactionsCount
+    holdingsCount
+    manualInvestmentsTrackingMethod
+    order
+    icon
+    logoUrl
+  }
+}

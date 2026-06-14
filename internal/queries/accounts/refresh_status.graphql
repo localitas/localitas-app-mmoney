@@ -1,0 +1,6 @@
+query GetAccountsRefreshStatus {
+  accounts {
+    id
+    hasSyncInProgress
+  }
+}

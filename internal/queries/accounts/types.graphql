@@ -1,0 +1,6 @@
+query GetAccountTypeOptions {
+  accountTypes {
+    name
+    display
+  }
+}

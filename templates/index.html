@@ -1,0 +1,1269 @@
+{{define "index.html"}}
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MMoney — Localitas</title>
+    <base href="{{.BasePath}}">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        :root { --sidebar-w: 240px; --color-bg-base: #fcfbfe; --color-bg-elevated: #f0eef7; --color-text-primary: #1a1625; --color-text-secondary: #4a3f5c; --color-glass-base: rgba(255,255,255,0.75); --color-glass-border: rgba(139,117,169,0.35); --color-accent: #7d6b96; --color-green: #22c55e; --color-red: #ef4444; --shadow: 0 4px 16px rgba(139,117,169,0.08); }
+        [data-theme="dark"] { --color-bg-base: #120f1a; --color-bg-elevated: #221b2e; --color-text-primary: #e8e4f0; --color-text-secondary: #b3a8c8; --color-glass-base: rgba(37,31,53,0.85); --color-glass-border: rgba(184,164,212,0.15); --color-accent: #c5b3e0; --color-green: #4ade80; --color-red: #f87171; --shadow: 0 6px 24px rgba(0,0,0,0.4); }
+        html, body { margin:0; padding:0; height:100%; overflow:hidden; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--color-bg-base); color: var(--color-text-primary); display: flex; }
+        .bg { position:fixed; inset:0; background: radial-gradient(circle at 10% 20%, var(--color-bg-elevated), var(--color-bg-base) 90%); z-index:-1; }
+        .gain { color: var(--color-green); }
+        .loss { color: var(--color-red); }
+        .sidebar { width: var(--sidebar-w); flex-shrink:0; border-right:1px solid var(--color-glass-border); display:flex; flex-direction:column; background:var(--color-glass-base); }
+        .sidebar-header { height:56px; padding:0 0.75rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--color-glass-border); }
+        .sidebar-item { padding:0.625rem 0.75rem; cursor:pointer; display:flex; align-items:center; gap:0.5rem; font-size:0.8125rem; border-radius:0.375rem; margin:0.125rem 0.5rem; }
+        .sidebar-item:hover { background:rgba(142,122,168,0.15); }
+        .sidebar-item.active { background:rgba(168,85,247,0.15); font-weight:500; }
+        .main { flex:1; display:flex; flex-direction:column; min-width:0; overflow:hidden; }
+        .toolbar { height:56px; padding:0 1rem; display:flex; align-items:center; gap:0.5rem; border-bottom:1px solid var(--color-glass-border); background:var(--color-glass-base); }
+        .btn { padding:0.375rem 0.75rem; border-radius:0.5rem; border:1px solid var(--color-glass-border); background:var(--color-glass-base); color:var(--color-text-primary); cursor:pointer; font-size:0.8125rem; display:flex; align-items:center; gap:0.25rem; }
+        .btn:hover { border-color:var(--color-accent); }
+        .btn-primary { background:var(--color-accent); color:#fff; border-color:var(--color-accent); }
+        .content-area { flex:1; overflow-y:auto; padding:1.5rem; }
+        .glass-panel { background:var(--color-glass-base); border:1px solid var(--color-glass-border); border-radius:0.75rem; box-shadow:var(--shadow); }
+        .stat-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:1rem; margin-bottom:1.5rem; }
+        .stat-card { padding:1rem; }
+        .stat-label { font-size:0.75rem; color:var(--color-text-secondary); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:0.25rem; }
+        .stat-value { font-size:1.5rem; font-weight:700; font-variant-numeric:tabular-nums; }
+        table { width:100%; border-collapse:collapse; font-size:0.8125rem; }
+        th { text-align:left; padding:0.5rem 0.75rem; color:var(--color-text-secondary); font-weight:600; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.05em; border-bottom:1px solid var(--color-glass-border); }
+        td { padding:0.5rem 0.75rem; border-bottom:1px solid var(--color-glass-border); }
+        tr:hover td { background:rgba(142,122,168,0.05); }
+        input, select { background:var(--color-glass-base); border:1px solid var(--color-glass-border); border-radius:0.375rem; padding:0.375rem 0.75rem; color:var(--color-text-primary); font-size:0.8125rem; outline:none; }
+        input:focus, select:focus { border-color:var(--color-accent); }
+        .sync-status { font-size:0.75rem; color:var(--color-text-secondary); }
+        .day-section { border-bottom:1px solid var(--color-glass-border); }
+        .day-header { font-weight:600; color:var(--color-text-secondary); padding:0.5rem 0.75rem; font-size:0.6875rem; text-transform:uppercase; letter-spacing:0.05em; background:var(--color-bg-elevated); position:sticky; top:0; z-index:1; display:flex; justify-content:space-between; align-items:center; }
+        .day-header .day-date { color:var(--color-accent); font-size:0.8125rem; text-transform:none; letter-spacing:0; }
+        .day-header.today { background:rgba(142,122,168,0.15); }
+        .day-header.today .day-date { font-weight:700; }
+        .tx-row { padding:0.375rem 0.75rem; display:flex; align-items:center; gap:0.5rem; font-size:0.8125rem; border-bottom:1px solid var(--color-glass-border); }
+        .tx-row:last-child { border-bottom:none; }
+        .tx-row:hover { background:rgba(142,122,168,0.06); }
+        .tx-merchant { flex:1; min-width:0; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .tx-category { width:120px; flex-shrink:0; color:var(--color-text-secondary); font-size:0.75rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .tx-amount { width:100px; flex-shrink:0; text-align:right; font-weight:500; font-variant-numeric:tabular-nums; }
+        #sync-indicator { display:none; }
+        #sync-indicator.syncing { display:inline; }
+    </style>
+</head>
+<body>
+    <div class="bg"></div>
+    <div class="sidebar">
+        <a onclick="loadDocs()" style="display:flex; align-items:center; gap:0.75rem; height:56px; min-height:56px; padding:0 1rem; border-bottom:1px solid var(--color-glass-border); color:var(--color-text-secondary); text-decoration:none; font-size:0.875rem; font-weight:500; flex-shrink:0; cursor:pointer;">
+            <i data-lucide="book-open" style="width:18px; height:18px;"></i>
+            Documentation
+        </a>
+        <div class="sidebar-header">
+            <span style="font-weight:600; font-size:0.9375rem;">MMoney</span>
+        </div>
+        <div style="padding:0.5rem 0; flex:1; overflow-y:auto;">
+            <div class="sidebar-item active" onclick="showSection('dashboard')"><i data-lucide="layout-dashboard" style="width:16px;height:16px;"></i> Dashboard</div>
+            <div class="sidebar-item" onclick="showSection('accounts')"><i data-lucide="building-2" style="width:16px;height:16px;"></i> Accounts</div>
+            <div class="sidebar-item" onclick="showSection('transactions')"><i data-lucide="receipt" style="width:16px;height:16px;"></i> Transactions</div>
+            <div class="sidebar-item" onclick="showSection('budgets')"><i data-lucide="pie-chart" style="width:16px;height:16px;"></i> Budgets</div>
+            <div class="sidebar-item" onclick="showSection('recurring')"><i data-lucide="repeat" style="width:16px;height:16px;"></i> Recurring</div>
+            <div class="sidebar-item" onclick="showSection('investments')"><i data-lucide="trending-up" style="width:16px;height:16px;"></i> Investments</div>
+            <div class="sidebar-item" onclick="showSection('reports')"><i data-lucide="file-bar-chart" style="width:16px;height:16px;"></i> Reports</div>
+            <div class="sidebar-item" onclick="showSection('networth')"><i data-lucide="bar-chart-3" style="width:16px;height:16px;"></i> Net Worth</div>
+            <div class="sidebar-item" onclick="showSection('fire')"><i data-lucide="flame" style="width:16px;height:16px;"></i> FIRE</div>
+            <div style="border-top:1px solid var(--color-glass-border);margin:0.5rem 0;"></div>
+            <div class="sidebar-item" onclick="showSection('settings')"><i data-lucide="settings" style="width:16px;height:16px;"></i> Settings</div>
+        </div>
+        <div style="padding:0.75rem; border-top:1px solid var(--color-glass-border);">
+            <div class="sync-status" id="sync-status-text">Loading...</div>
+        </div>
+    </div>
+    <div class="main">
+        <div class="toolbar">
+            <div style="flex:1;"></div>
+            <span id="sync-indicator" class="sync-status">Syncing...</span>
+            <button class="btn btn-primary" onclick="triggerSync()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Sync</button>
+        </div>
+        <div class="content-area" id="main-content">
+            <div id="section-dashboard"></div>
+            <div id="section-accounts" style="display:none;"></div>
+            <div id="section-transactions" style="display:none;"></div>
+            <div id="section-budgets" style="display:none;"></div>
+            <div id="section-recurring" style="display:none;"></div>
+            <div id="section-investments" style="display:none;"></div>
+            <div id="section-reports" style="display:none;"></div>
+            <div id="section-networth" style="display:none;"></div>
+            <div id="section-fire" style="display:none;"></div>
+            <div id="section-settings" style="display:none;"></div>
+        </div>
+    </div>
+    <script>
+    let currentSection = 'dashboard';
+    function fmt(n) { return new Intl.NumberFormat('en-US', {style:'currency',currency:'USD'}).format(n); }
+    function fmtPct(n) { return n.toFixed(1) + '%'; }
+
+    const accountGroups = [
+        {type: 'depository', label: 'Cash'},
+        {type: 'brokerage', label: 'Investments'},
+        {type: 'real_estate', label: 'Real Estate'},
+        {type: 'vehicle', label: 'Vehicles'},
+        {type: 'credit', label: 'Credit Cards'},
+        {type: 'loan', label: 'Loans'},
+    ];
+
+    function groupAccounts(accounts) {
+        const grouped = {};
+        accountGroups.forEach(g => { grouped[g.type] = []; });
+        grouped['other'] = [];
+        (accounts || []).filter(a => !a.is_hidden && !a.is_closed).forEach(a => {
+            if (grouped[a.account_type]) grouped[a.account_type].push(a);
+            else grouped['other'].push(a);
+        });
+        return grouped;
+    }
+
+    function renderGroupedAccountsTable(accounts, showSubtype) {
+        const grouped = groupAccounts(accounts);
+        let html = '';
+        const allGroups = [...accountGroups];
+        if (grouped['other'] && grouped['other'].length > 0) allGroups.push({type: 'other', label: 'Other'});
+        const colCount = showSubtype ? 4 : 2;
+
+        allGroups.forEach(g => {
+            const items = grouped[g.type];
+            if (!items || items.length === 0) return;
+            let groupTotal = 0;
+            items.forEach(a => { groupTotal += a.display_balance; });
+            const totalCls = groupTotal >= 0 ? 'gain' : 'loss';
+            html += `<tr style="background:var(--color-bg-elevated);"><td colspan="${colCount - 1}" style="font-weight:600;font-size:0.8125rem;padding:0.625rem 0.75rem;">${g.label}</td><td style="text-align:right;font-weight:600;padding:0.625rem 0.75rem;" class="${totalCls}">${fmt(groupTotal)}</td></tr>`;
+            items.forEach(a => {
+                const cls = a.display_balance >= 0 ? 'gain' : 'loss';
+                if (showSubtype) {
+                    html += `<tr><td style="padding-left:1.5rem;">${a.display_name}</td><td>${a.account_subtype}</td><td>${a.data_provider}</td><td style="text-align:right;" class="${cls}">${fmt(a.display_balance)}</td></tr>`;
+                } else {
+                    html += `<tr><td style="padding-left:1.5rem;">${a.display_name}</td><td style="text-align:right;" class="${cls}">${fmt(a.display_balance)}</td></tr>`;
+                }
+            });
+        });
+        return html;
+    }
+
+    function showSection(name) {
+        document.querySelectorAll('[id^="section-"]').forEach(el => el.style.display = 'none');
+        document.getElementById('section-' + name).style.display = 'block';
+        document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.sidebar-item').forEach(el => {
+            if (el.textContent.trim().toLowerCase().replace(/\s+/g,'') === name.replace(/\s+/g,''))
+                el.classList.add('active');
+        });
+        currentSection = name;
+        loadSection(name);
+    }
+
+    function loadSection(name) {
+        switch(name) {
+            case 'dashboard': loadDashboard(); break;
+            case 'accounts': loadAccounts(); break;
+            case 'transactions': loadTransactions(); break;
+            case 'budgets': loadBudgets(); break;
+            case 'recurring': loadRecurring(); break;
+            case 'investments': loadInvestments(); break;
+            case 'reports': loadReports(); break;
+            case 'networth': loadNetWorth(); break;
+            case 'fire': loadFIRE(); break;
+            case 'settings': loadSettings(); break;
+        }
+    }
+
+    async function apiFetch(path) {
+        const resp = await fetch(path);
+        return resp.json();
+    }
+
+    async function loadSettings() {
+        const el = document.getElementById('section-settings');
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Loading settings...</p>';
+
+        let credentials = [];
+        try {
+            const vaultResp = await fetch('/apps/vault/api/credentials');
+            const vaultData = await vaultResp.json();
+            credentials = vaultData.credentials || [];
+        } catch(e) {}
+
+        const cfg = await apiFetch('api/config/vault_credential_id');
+        const currentId = cfg.value || '';
+
+        let options = '<option value="">-- Select a vault credential --</option>';
+        credentials.forEach(c => {
+            const sel = c.public_id === currentId ? ' selected' : '';
+            options += `<option value="${c.public_id}"${sel}>${c.name} (${c.public_id.substring(0,8)}...)</option>`;
+        });
+
+        const syncStatus = await apiFetch('api/sync-status');
+        let syncInfo = 'Never synced';
+        if (syncStatus.last_sync_at) {
+            const d = new Date(syncStatus.last_sync_at);
+            syncInfo = `Last sync: ${d.toLocaleString()} — ${syncStatus.status} (${syncStatus.account_count} accounts, ${syncStatus.transaction_count} transactions)`;
+            if (syncStatus.error_message) syncInfo += `<br><span class="loss">${syncStatus.error_message}</span>`;
+        }
+
+        const historyData = await apiFetch('api/sync-history');
+        const history = historyData.history || [];
+
+        let historyRows = '';
+        history.forEach(h => {
+            const started = new Date(h.started_at).toLocaleString();
+            const statusCls = h.status === 'ok' ? 'gain' : 'loss';
+            const statusLabel = h.status === 'ok'
+                ? `${h.accounts_synced} accounts, ${h.transactions_synced} txns`
+                : h.error_message || 'unknown error';
+            historyRows += `<tr><td>${started}</td><td class="${statusCls}" style="font-weight:500;">${h.status}</td><td style="font-size:0.75rem;">${statusLabel}</td></tr>`;
+        });
+
+        el.innerHTML = `
+        <div style="max-width:600px;">
+            <h2 style="font-size:1.125rem;font-weight:600;margin-bottom:1rem;">Settings</h2>
+
+            <div style="background:rgba(125,107,150,0.1);border:1px solid var(--color-glass-border);border-radius:0.5rem;padding:0.75rem 1rem;margin-bottom:1rem;font-size:0.8125rem;color:var(--color-text-secondary);">
+                If you signed up for Monarch Money with Google or Apple, go to
+                <strong>Monarch Money Settings &gt; Security</strong> and set a password on your account first.
+                Your social login will still work. Use your email + new password in the vault credential below.
+            </div>
+
+            <div class="glass-panel" style="padding:1.25rem;margin-bottom:1rem;">
+                <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.75rem;">Monarch Money Credential</h3>
+                <p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">
+                    Select the vault credential containing your Monarch Money login.
+                    Create one in <a href="/apps/vault" style="color:var(--color-accent);text-decoration:underline;">Vault</a> with keys: <code>email</code>, <code>password</code>, <code>mfa_secret</code>.
+                </p>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <select id="settings-vault-select" style="flex:1;">${options}</select>
+                    <button class="btn btn-primary" onclick="saveSettings()">Save</button>
+                </div>
+                <div id="settings-msg" style="font-size:0.8125rem;margin-top:0.5rem;display:none;"></div>
+                <p id="settings-no-cred" style="color:var(--color-red);font-size:0.8125rem;margin-top:0.5rem;${currentId ? 'display:none;' : ''}">No credential configured. Select one above to start syncing.</p>
+            </div>
+
+            <div class="glass-panel" style="padding:1.25rem;margin-bottom:1rem;">
+                <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.75rem;">Sync Status</h3>
+                <p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">${syncInfo}</p>
+                <div style="display:flex;gap:0.5rem;align-items:center;">
+                    <button class="btn btn-primary" onclick="triggerSync().then(() => loadSettings())">Sync Now</button>
+                    <span style="color:var(--color-text-secondary);font-size:0.75rem;">Automation syncs every 10 minutes.</span>
+                </div>
+            </div>
+
+            <div class="glass-panel" style="padding:1.25rem;">
+                <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.75rem;">Sync History</h3>
+                ${history.length > 0 ? `
+                <div style="overflow-x:auto;">
+                    <table><thead><tr><th>Time</th><th>Status</th><th>Details</th></tr></thead>
+                    <tbody>${historyRows}</tbody></table>
+                </div>
+                <p style="color:var(--color-text-secondary);font-size:0.75rem;margin-top:0.75rem;">Logs older than 3 days are automatically cleaned up.</p>
+                ` : '<p style="color:var(--color-text-secondary);font-size:0.8125rem;">No sync history yet.</p>'}
+            </div>
+        </div>`;
+    }
+
+    async function saveSettings() {
+        const sel = document.getElementById('settings-vault-select');
+        const msg = document.getElementById('settings-msg');
+        const value = sel.value;
+
+        if (!value) {
+            msg.style.display = 'block';
+            msg.style.color = 'var(--color-red)';
+            msg.textContent = 'Please select a credential';
+            return;
+        }
+
+        const resp = await fetch('api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({key: 'vault_credential_id', value: value})
+        });
+
+        if (resp.ok) {
+            msg.style.display = 'block';
+            msg.style.color = 'var(--color-green)';
+            msg.textContent = 'Saved!';
+            var noCred = document.getElementById('settings-no-cred');
+            if (noCred) noCred.style.display = 'none';
+        } else {
+            msg.style.display = 'block';
+            msg.style.color = 'var(--color-red)';
+            msg.textContent = 'Failed to save';
+        }
+    }
+
+    async function checkSetup() {
+        const cfg = await apiFetch('api/config/vault_credential_id');
+        if (!cfg.value) {
+            showSetupScreen();
+            return false;
+        }
+        return true;
+    }
+
+    function showSetupScreen() {
+        const el = document.getElementById('section-dashboard');
+        el.innerHTML = `
+        <div style="max-width:560px;margin:2rem auto;">
+            <div class="glass-panel" style="padding:2rem;">
+                <h2 style="font-size:1.25rem;font-weight:600;margin-bottom:0.5rem;">Setup MMoney</h2>
+                <p style="color:var(--color-text-secondary);font-size:0.875rem;margin-bottom:1.5rem;">
+                    Connect your Monarch Money account to start syncing your financial data.
+                </p>
+
+                <div style="margin-bottom:1.5rem;">
+                    <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.5rem;">Step 1: Store credentials in Vault</h3>
+                    <p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">
+                        Go to <a href="/apps/vault" style="color:var(--color-accent);text-decoration:underline;">Vault</a> and create a new credential named <strong>monarch-money</strong> with these keys:
+                    </p>
+                    <div style="background:var(--color-bg-base);border-radius:0.375rem;padding:0.75rem;font-size:0.8125rem;font-family:monospace;">
+                        <div><strong>email</strong> &mdash; your Monarch Money email</div>
+                        <div><strong>password</strong> &mdash; your Monarch Money password</div>
+                        <div><strong>mfa_secret</strong> &mdash; TOTP secret (leave empty if no MFA)</div>
+                    </div>
+                    <p style="color:var(--color-text-secondary);font-size:0.75rem;margin-top:0.5rem;">
+                        Signed up with Google? Go to Monarch Money Settings &gt; Security and set a password first.
+                    </p>
+                </div>
+
+                <div style="margin-bottom:1.5rem;">
+                    <h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.5rem;">Step 2: Enter your Vault credential ID</h3>
+                    <p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">
+                        Copy the <strong>public_id</strong> from the credential you just created in Vault and paste it below.
+                    </p>
+                    <div style="display:flex;gap:0.5rem;">
+                        <input type="text" id="setup-credential-id" placeholder="Vault public_id (e.g. abc123-def456-...)" style="flex:1;">
+                        <button class="btn btn-primary" onclick="saveCredentialId()">Save</button>
+                    </div>
+                    <div id="setup-error" style="color:var(--color-red);font-size:0.8125rem;margin-top:0.5rem;display:none;"></div>
+                    <div id="setup-success" style="color:var(--color-green);font-size:0.8125rem;margin-top:0.5rem;display:none;"></div>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    async function saveCredentialId() {
+        const input = document.getElementById('setup-credential-id');
+        const errEl = document.getElementById('setup-error');
+        const okEl = document.getElementById('setup-success');
+        errEl.style.display = 'none';
+        okEl.style.display = 'none';
+
+        const value = input.value.trim();
+        if (!value) {
+            errEl.textContent = 'Please enter a vault credential ID';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        const resp = await fetch('api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({key: 'vault_credential_id', value: value})
+        });
+        if (!resp.ok) {
+            errEl.textContent = 'Failed to save configuration';
+            errEl.style.display = 'block';
+            return;
+        }
+
+        okEl.textContent = 'Saved! Running first sync...';
+        okEl.style.display = 'block';
+
+        const syncResp = await fetch('api/sync', {method: 'POST'});
+        if (syncResp.ok) {
+            okEl.textContent = 'Sync complete! Loading dashboard...';
+            setTimeout(() => { loadDashboard(); loadSyncStatus(); }, 500);
+        } else {
+            const err = await syncResp.json();
+            errEl.textContent = 'Sync failed: ' + (err.error || 'unknown error');
+            errEl.style.display = 'block';
+        }
+    }
+
+    async function loadDashboard() {
+        const el = document.getElementById('section-dashboard');
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Loading dashboard...</p>';
+
+        const ready = await checkSetup();
+        if (!ready) return;
+
+        const [accts, cf, syncSt, fireData] = await Promise.all([
+            apiFetch('api/accounts'),
+            apiFetch('api/cashflow'),
+            apiFetch('api/sync-status'),
+            apiFetch('api/reports/fire')
+        ]);
+
+        let totalAssets = 0, totalLiabilities = 0, totalInvestments = 0;
+        (accts.accounts || []).forEach(a => {
+            if (a.is_asset) {
+                totalAssets += a.display_balance;
+                if (a.account_type === 'brokerage') totalInvestments += a.display_balance;
+            } else {
+                totalLiabilities += Math.abs(a.display_balance);
+            }
+        });
+        const netWorth = totalAssets - totalLiabilities;
+
+        let html = '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Net Worth</div><div class="stat-value">${fmt(netWorth)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Assets</div><div class="stat-value gain">${fmt(totalAssets)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Investments</div><div class="stat-value">${fmt(totalInvestments)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Liabilities</div><div class="stat-value loss">${fmt(totalLiabilities)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Monthly Income</div><div class="stat-value gain">${fmt(cf.income || 0)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Monthly Expense</div><div class="stat-value loss">${fmt(cf.expense || 0)}</div></div>`;
+        const dashSavings = fireData.savings_rate || cf.savings_rate || 0;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Savings Rate</div><div class="stat-value">${dashSavings === 0 ? '<span style="color:var(--color-text-secondary);">N/A</span>' : fmtPct(dashSavings)}</div></div>`;
+        html += '</div>';
+
+        html += '<h3 style="font-size:0.875rem; font-weight:600; margin-bottom:0.75rem;">Accounts</h3>';
+        html += '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Account</th><th style="text-align:right;">Balance</th></tr></thead><tbody>';
+        html += renderGroupedAccountsTable(accts.accounts, false);
+        html += '</tbody></table></div>';
+        el.innerHTML = html;
+    }
+
+    async function loadAccounts() {
+        const el = document.getElementById('section-accounts');
+        const data = await apiFetch('api/accounts');
+        const all = (data.accounts || []).filter(a => !a.is_hidden && !a.is_closed);
+        let totalAssets = 0, totalLiabilities = 0, totalInvestments = 0;
+        all.forEach(a => {
+            if (a.is_asset) {
+                totalAssets += a.display_balance;
+                if (a.account_type === 'brokerage') totalInvestments += a.display_balance;
+            } else {
+                totalLiabilities += Math.abs(a.display_balance);
+            }
+        });
+        const netWorth = totalAssets - totalLiabilities;
+
+        let html = '<h2 style="font-size:1.125rem; font-weight:600; margin-bottom:1rem;">Accounts</h2>';
+        html += '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Net Worth</div><div class="stat-value">${fmt(netWorth)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Assets</div><div class="stat-value gain">${fmt(totalAssets)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Investments</div><div class="stat-value">${fmt(totalInvestments)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Liabilities</div><div class="stat-value loss">${fmt(totalLiabilities)}</div></div>`;
+        html += '</div>';
+        html += '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Name</th><th>Subtype</th><th>Provider</th><th style="text-align:right;">Balance</th></tr></thead><tbody>';
+        html += renderGroupedAccountsTable(data.accounts, true);
+        html += '</tbody></table></div>';
+        el.innerHTML = html;
+    }
+
+    let txPage = 0;
+    let txSearchQuery = '';
+
+    function renderDayGroupedTransactions(transactions) {
+        const days = {};
+        const dayOrder = [];
+        (transactions || []).forEach(t => {
+            if (!days[t.date]) {
+                days[t.date] = {transactions: [], total: 0};
+                dayOrder.push(t.date);
+            }
+            days[t.date].transactions.push(t);
+            days[t.date].total += t.amount;
+        });
+
+        const today = new Date().toISOString().split('T')[0];
+        let html = '';
+        dayOrder.forEach(date => {
+            const d = days[date];
+            const dateObj = new Date(date + 'T12:00:00');
+            const dayName = dateObj.toLocaleDateString('en-US', {weekday: 'long'});
+            const datePart = dateObj.toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
+            const isToday = date === today;
+            const totalCls = d.total >= 0 ? 'gain' : 'loss';
+
+            html += `<div class="day-section">`;
+            html += `<div class="day-header${isToday ? ' today' : ''}">`;
+            html += `<span><span class="day-date">${datePart}</span> ${dayName}${isToday ? ' <span style="display:inline-block;font-size:0.5625rem;font-weight:700;letter-spacing:0.08em;padding:0.0625rem 0.375rem;border-radius:1rem;background:var(--color-accent);color:#fff;vertical-align:middle;margin-left:0.375rem;">TODAY</span>' : ''}</span>`;
+            html += `<span class="${totalCls}" style="font-size:0.8125rem;font-weight:600;">${fmt(d.total)}</span>`;
+            html += `</div>`;
+            d.transactions.forEach(t => {
+                const cls = t.amount >= 0 ? 'gain' : 'loss';
+                html += `<div class="tx-row">`;
+                html += `<div class="tx-merchant">${t.merchant}</div>`;
+                html += `<div class="tx-category">${t.category}</div>`;
+                html += `<div class="tx-amount ${cls}">${fmt(t.amount)}</div>`;
+                html += `</div>`;
+            });
+            html += `</div>`;
+        });
+        return html;
+    }
+
+    async function loadTransactions(page) {
+        if (page === undefined) page = 0;
+        txPage = page;
+        const el = document.getElementById('section-transactions');
+        const limit = 100;
+
+        let headerHTML = '<div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">';
+        headerHTML += '<h2 style="font-size:1.125rem; font-weight:600; margin:0;">Transactions</h2>';
+        headerHTML += '<div style="flex:1;"></div>';
+        headerHTML += '<div style="display:flex;gap:0.375rem;align-items:center;">';
+        headerHTML += `<input type="text" id="tx-search" placeholder="Search..." value="${txSearchQuery}" style="width:200px;" onkeydown="if(event.key==='Enter')searchTransactions()">`;
+        headerHTML += `<button class="btn" onclick="searchTransactions()">Search</button>`;
+        if (txSearchQuery) headerHTML += `<button class="btn" onclick="clearTxSearch()">Clear</button>`;
+        headerHTML += '</div></div>';
+
+        if (txSearchQuery) {
+            el.innerHTML = headerHTML + '<p style="color:var(--color-text-secondary);">Searching...</p>';
+            const data = await apiFetch('api/search?q=' + encodeURIComponent(txSearchQuery));
+            const txs = data.transactions || [];
+            let html = headerHTML;
+            html += `<p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">${txs.length} results for "${txSearchQuery}"</p>`;
+            html += '<div class="glass-panel" style="overflow-y:auto;max-height:calc(100vh - 220px);">';
+            html += renderDayGroupedTransactions(txs);
+            if (txs.length === 0) html += '<p style="text-align:center;padding:2rem;color:var(--color-text-secondary);">No transactions found</p>';
+            html += '</div>';
+            el.innerHTML = html;
+            lucide.createIcons();
+            return;
+        }
+
+        el.innerHTML = headerHTML + '<p style="color:var(--color-text-secondary);">Loading...</p>';
+        const data = await apiFetch(`api/transactions?limit=${limit}&offset=${page * limit}`);
+        let html = headerHTML;
+        html += '<div class="glass-panel" style="overflow-y:auto;max-height:calc(100vh - 220px);">';
+        html += renderDayGroupedTransactions(data.transactions);
+        if ((data.transactions || []).length === 0) html += '<p style="text-align:center;padding:2rem;color:var(--color-text-secondary);">No transactions yet</p>';
+        html += '</div>';
+        html += '<div style="display:flex; gap:0.5rem; margin-top:0.75rem; justify-content:center; align-items:center;">';
+        if (page > 0) html += `<button class="btn" onclick="loadTransactions(${page-1})">Previous</button>`;
+        if ((page + 1) * limit < data.total) html += `<button class="btn" onclick="loadTransactions(${page+1})">Next</button>`;
+        html += `<span class="sync-status">Showing ${page*limit+1}–${Math.min((page+1)*limit, data.total)} of ${data.total}</span>`;
+        html += '</div>';
+        el.innerHTML = html;
+        lucide.createIcons();
+    }
+
+    function searchTransactions() {
+        const input = document.getElementById('tx-search');
+        txSearchQuery = (input ? input.value : '').trim();
+        txPage = 0;
+        loadTransactions(0);
+    }
+
+    function clearTxSearch() {
+        txSearchQuery = '';
+        txPage = 0;
+        loadTransactions(0);
+    }
+
+    async function loadBudgets() {
+        const el = document.getElementById('section-budgets');
+        const data = await apiFetch('api/budgets');
+        let html = '<h2 style="font-size:1.125rem; font-weight:600; margin-bottom:1rem;">Budgets</h2>';
+        html += '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Category</th><th>Month</th><th style="text-align:right;">Planned</th><th style="text-align:right;">Actual</th><th style="text-align:right;">Remaining</th></tr></thead><tbody>';
+        (data.budgets || []).forEach(b => {
+            const rem = b.planned - Math.abs(b.actual);
+            const cls = rem >= 0 ? 'gain' : 'loss';
+            html += `<tr><td>${b.category_name}</td><td>${b.month}</td><td style="text-align:right;">${fmt(b.planned)}</td><td style="text-align:right;">${fmt(b.actual)}</td><td style="text-align:right;" class="${cls}">${fmt(rem)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        el.innerHTML = html;
+    }
+
+    async function loadRecurring() {
+        const el = document.getElementById('section-recurring');
+        const data = await apiFetch('api/recurring');
+        let html = '<h2 style="font-size:1.125rem; font-weight:600; margin-bottom:1rem;">Recurring Transactions</h2>';
+        html += '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Merchant</th><th>Category</th><th>Frequency</th><th>Next Date</th><th style="text-align:right;">Amount</th></tr></thead><tbody>';
+        (data.recurring || []).forEach(r => {
+            html += `<tr><td>${r.merchant}</td><td>${r.category_name}</td><td>${r.frequency}</td><td>${r.next_date}</td><td style="text-align:right;" class="loss">${fmt(r.amount)}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        el.innerHTML = html;
+    }
+
+    let invData = null;
+
+    async function loadInvestments() {
+        const el = document.getElementById('section-investments');
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Loading investments...</p>';
+        invData = await apiFetch('api/investments');
+        await renderInvestments();
+    }
+
+    async function renderInvestments() {
+        const el = document.getElementById('section-investments');
+        const investments = invData.investments || [];
+
+        let totalValue = 0, totalBasis = 0;
+        investments.forEach(i => { totalValue += i.total_value; totalBasis += i.basis; });
+        const gain = totalValue - totalBasis;
+
+        const startDate = fmtDate(getRangeStart(perfRange));
+        const endDate = fmtDate(new Date());
+
+        const secIDs = investments.filter(i => i.security_id).map(i => i.security_id);
+        const perfMap = {};
+        if (secIDs.length > 0) {
+            const perfFetches = secIDs.map(id => apiFetch(`api/investment-performance?security_id=${id}&start=${startDate}&end=${endDate}`));
+            const perfResults = await Promise.all(perfFetches);
+            secIDs.forEach((id, idx) => {
+                const pts = perfResults[idx].performance || [];
+                if (pts.length > 0) perfMap[id] = pts[pts.length - 1].return_percent;
+            });
+        }
+
+        const ranges = [{k:'1w',l:'1W'},{k:'1m',l:'1M'},{k:'3m',l:'3M'},{k:'6m',l:'6M'},{k:'ytd',l:'YTD'},{k:'1y',l:'1Y'},{k:'5y',l:'5Y'}];
+
+        let html = '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">';
+        html += '<h2 style="font-size:1.125rem; font-weight:600; margin:0;">Investments</h2>';
+        html += '<div style="display:flex;gap:0.25rem;">';
+        ranges.forEach(r => {
+            const active = r.k === perfRange ? ' active' : '';
+            html += `<button class="btn btn-sm${active}" onclick="perfRange='${r.k}';renderInvestments()">${r.l}</button>`;
+        });
+        html += '</div></div>';
+
+        html += '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Value</div><div class="stat-value">${fmt(totalValue)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Cost Basis</div><div class="stat-value">${fmt(totalBasis)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Gain/Loss</div><div class="stat-value ${gain >= 0 ? 'gain' : 'loss'}">${fmt(gain)}</div></div>`;
+        html += '</div>';
+
+        html += '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Ticker</th><th>Name</th><th style="text-align:right;">Qty</th><th style="text-align:right;">Price</th><th style="text-align:right;">Value</th><th style="text-align:right;">Return</th><th></th></tr></thead><tbody>';
+        investments.forEach(i => {
+            const ret = perfMap[i.security_id];
+            let retCell = '<td style="text-align:right;color:var(--color-text-secondary);">—</td>';
+            if (ret !== undefined) {
+                retCell = `<td style="text-align:right;font-weight:500;" class="${retCls(ret)}">${fmtReturn(ret)}</td>`;
+            }
+            const perfBtn = i.security_id ? `<button class="btn btn-sm" onclick="showPerformance('${i.security_id}','${i.ticker || i.name}')">Chart</button>` : '';
+            html += `<tr><td><strong>${i.ticker || '—'}</strong></td><td>${i.name}</td><td style="text-align:right;">${i.quantity.toFixed(2)}</td><td style="text-align:right;">${fmt(i.price)}</td><td style="text-align:right;">${fmt(i.total_value)}</td>${retCell}<td>${perfBtn}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        html += '<div id="perf-chart-area" style="margin-top:1rem;"></div>';
+        el.innerHTML = html;
+    }
+
+    const SP500_SECURITY_ID = '119563102644090322';
+    const BONDS_SECURITY_ID = '78665972690706707';
+
+    function fmtReturn(v) { return (v >= 0 ? '+' : '') + fmtPct(v); }
+    function retCls(v) { return v >= 0 ? 'gain' : 'loss'; }
+
+    let perfSecurityID = '', perfLabel = '', perfRange = 'ytd';
+
+    function getRangeStart(range) {
+        const now = new Date();
+        switch(range) {
+            case '1w': return new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+            case '1m': return new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+            case '3m': return new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+            case '6m': return new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+            case 'ytd': return new Date(now.getFullYear(), 0, 1);
+            case '1y': return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            case '5y': return new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+            default: return new Date(now.getFullYear(), 0, 1);
+        }
+    }
+
+    function fmtDate(d) { return d.toISOString().split('T')[0]; }
+
+    function setPerfRange(range) {
+        perfRange = range;
+        if (perfSecurityID) showPerformance(perfSecurityID, perfLabel);
+    }
+
+    async function showPerformance(securityID, label) {
+        perfSecurityID = securityID;
+        perfLabel = label;
+        const area = document.getElementById('perf-chart-area');
+        area.innerHTML = '<p style="color:var(--color-text-secondary);">Loading performance data...</p>';
+
+        const startDate = fmtDate(getRangeStart(perfRange));
+        const endDate = fmtDate(new Date());
+
+        const benchmarks = [];
+        if (securityID !== SP500_SECURITY_ID) benchmarks.push({id: SP500_SECURITY_ID, label: 'S&P 500'});
+        if (securityID !== BONDS_SECURITY_ID) benchmarks.push({id: BONDS_SECURITY_ID, label: 'Bonds'});
+
+        const fetches = [apiFetch(`api/investment-performance?security_id=${securityID}&start=${startDate}&end=${endDate}`)];
+        benchmarks.forEach(b => { fetches.push(apiFetch(`api/investment-performance?security_id=${b.id}&start=${startDate}&end=${endDate}`)); });
+
+        const results = await Promise.all(fetches);
+        const points = results[0].performance || [];
+
+        const benchmarkData = benchmarks.map((b, i) => {
+            const pts = results[i + 1].performance || [];
+            const map = {};
+            pts.forEach(p => { map[p.date] = p; });
+            const last = pts.length > 0 ? pts[pts.length - 1] : null;
+            return {label: b.label, map: map, last: last};
+        });
+
+        if (points.length === 0) {
+            area.innerHTML = '<div class="glass-panel" style="padding:1.25rem;"><p style="color:var(--color-text-secondary);">No performance data available for this range. Try a shorter range or sync first.</p></div>';
+            return;
+        }
+
+        const last = points[points.length - 1];
+        const first = points[0];
+
+        const ranges = [{k:'1w',l:'1W'},{k:'1m',l:'1M'},{k:'3m',l:'3M'},{k:'6m',l:'6M'},{k:'ytd',l:'YTD'},{k:'1y',l:'1Y'},{k:'5y',l:'5Y'}];
+
+        let html = '<div class="glass-panel" style="padding:1.25rem;">';
+        html += '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:0.75rem;flex-wrap:wrap;">';
+        html += `<h3 style="font-size:0.875rem;font-weight:600;margin:0;">${label} vs Benchmarks</h3>`;
+        html += '<div style="display:flex;gap:0.25rem;">';
+        ranges.forEach(r => {
+            const active = r.k === perfRange ? ' active' : '';
+            html += `<button class="btn btn-sm${active}" onclick="setPerfRange('${r.k}')">${r.l}</button>`;
+        });
+        html += '</div></div>';
+        html += '<div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:0.75rem;flex-wrap:wrap;">';
+        html += `<span class="${retCls(last.return_percent)}" style="font-weight:600;">${label}: ${fmtReturn(last.return_percent)}</span>`;
+        benchmarkData.forEach(b => {
+            if (b.last) html += `<span style="color:var(--color-text-secondary);">${b.label}: <span class="${retCls(b.last.return_percent)}">${fmtReturn(b.last.return_percent)}</span></span>`;
+        });
+        html += '</div>';
+
+        html += '<div id="perf-line-chart" style="width:100%;height:280px;margin-bottom:1rem;"></div>';
+
+        html += '<div style="overflow-x:auto;max-height:300px;"><table><thead><tr><th>Date</th><th style="text-align:right;">' + label + '</th>';
+        benchmarkData.forEach(b => {
+            html += `<th style="text-align:right;">${b.label}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        points.slice().reverse().forEach(p => {
+            let row = `<tr><td>${p.date}</td><td style="text-align:right;" class="${retCls(p.return_percent)}">${fmtReturn(p.return_percent)}</td>`;
+            benchmarkData.forEach(b => {
+                const bp = b.map[p.date];
+                if (bp) {
+                    row += `<td style="text-align:right;" class="${retCls(bp.return_percent)}">${fmtReturn(bp.return_percent)}</td>`;
+                } else {
+                    row += '<td style="text-align:right;color:var(--color-text-secondary);">—</td>';
+                }
+            });
+            row += '</tr>';
+            html += row;
+        });
+        html += '</tbody></table></div>';
+        html += `<p style="color:var(--color-text-secondary);font-size:0.75rem;margin-top:0.5rem;">${first.date} — ${last.date} (${points.length} data points)</p>`;
+        html += '</div>';
+        area.innerHTML = html;
+
+        const chartSeries = [{name: label, data: points.map(p => p.return_percent)}];
+        benchmarkData.forEach(b => {
+            chartSeries.push({name: b.label, data: points.map(p => {
+                const bp = b.map[p.date];
+                return bp ? bp.return_percent : null;
+            })});
+        });
+        renderLineChart('perf-line-chart', points.map(p => p.date), chartSeries, v => fmtReturn(v));
+    }
+
+    let reportTab = 'cashflow';
+    let reportPeriod = 'monthly';
+    let reportRecurringOnly = false;
+
+    function getReportDates() {
+        const now = new Date();
+        if (reportPeriod === 'yearly') {
+            return {
+                start: (now.getFullYear() - 2) + '-01-01',
+                end: now.getFullYear() + '-12-31'
+            };
+        }
+        const start = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+        return {
+            start: fmtDate(start),
+            end: fmtDate(now)
+        };
+    }
+
+    async function loadReports() {
+        const el = document.getElementById('section-reports');
+        const dates = getReportDates();
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Loading reports...</p>';
+
+        const recurringParam = reportRecurringOnly ? '&recurring=1' : '';
+        const data = await apiFetch(`api/reports/cashflow?start=${dates.start}&end=${dates.end}${recurringParam}`);
+
+        const tabs = [{k:'cashflow',l:'Cash Flow'},{k:'spending',l:'Spending'},{k:'income',l:'Income'}];
+        const periods = [{k:'monthly',l:'Monthly'},{k:'yearly',l:'Yearly'}];
+
+        let html = '<div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem;flex-wrap:wrap;">';
+        html += '<h2 style="font-size:1.125rem;font-weight:600;margin:0;">Reports</h2>';
+        html += '<div style="display:flex;gap:0.25rem;">';
+        tabs.forEach(t => {
+            const active = t.k === reportTab ? ' active' : '';
+            html += `<button class="btn btn-sm${active}" onclick="reportTab='${t.k}';loadReports()">${t.l}</button>`;
+        });
+        html += '</div>';
+        const recActive = reportRecurringOnly ? ' active' : '';
+        html += `<button class="btn btn-sm${recActive}" onclick="reportRecurringOnly=!reportRecurringOnly;loadReports()">Recurring Only</button>`;
+        html += '<div style="flex:1;"></div><div style="display:flex;gap:0.25rem;">';
+        periods.forEach(p => {
+            const active = p.k === reportPeriod ? ' active' : '';
+            html += `<button class="btn btn-sm${active}" onclick="reportPeriod='${p.k}';loadReports()">${p.l}</button>`;
+        });
+        html += '</div></div>';
+
+        if (reportTab === 'cashflow') {
+            html += renderCashflowTab(data);
+        } else if (reportTab === 'spending') {
+            html += renderSpendingTab(data);
+        } else if (reportTab === 'income') {
+            html += renderIncomeTab(data);
+        }
+
+        el.innerHTML = html;
+
+        if (reportTab === 'cashflow' && (data.months || []).length > 0) {
+            renderCashflowChart(data.months);
+        }
+    }
+
+    function renderCashflowChart(months) {
+        const container = document.getElementById('cashflow-chart');
+        if (!container) return;
+        const existing = echarts.getInstanceByDom(container);
+        if (existing) existing.dispose();
+        const chart = echarts.init(container);
+        const dark = isDark();
+        const textColor = dark ? '#b3a8c8' : '#4a3f5c';
+
+        chart.setOption({
+            grid: {left: 80, right: 20, top: 30, bottom: 30},
+            tooltip: {trigger: 'axis', formatter: function(params) {
+                let tip = params[0].axisValue + '<br>';
+                params.forEach(p => { tip += p.marker + ' ' + p.seriesName + ': ' + fmt(p.value) + '<br>'; });
+                return tip;
+            }},
+            legend: {data: ['Income', 'Expenses'], textStyle: {color: textColor}, top: 0},
+            xAxis: {type: 'category', data: months.map(m => m.month), axisLabel: {color: textColor, fontSize: 10}, axisLine: {lineStyle: {color: dark ? '#333' : '#ddd'}}},
+            yAxis: {type: 'value', axisLabel: {color: textColor, fontSize: 10, formatter: v => fmt(v)}, splitLine: {lineStyle: {color: dark ? '#2a2a3a' : '#f0f0f0'}}},
+            series: [
+                {name: 'Income', type: 'bar', stack: 'total', data: months.map(m => m.income), itemStyle: {color: '#22c55e'}},
+                {name: 'Expenses', type: 'bar', stack: 'total', data: months.map(m => m.expense), itemStyle: {color: '#ef4444'}},
+            ],
+        });
+    }
+
+    function renderCashflowTab(data) {
+        let html = '<div class="glass-panel" style="padding:1rem;margin-bottom:1rem;"><div id="cashflow-chart" style="width:100%;height:280px;"></div></div>';
+
+        html += '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Income</div><div class="stat-value gain">${fmt(data.total_income)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Expenses</div><div class="stat-value loss">${fmt(data.total_expense)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Savings</div><div class="stat-value ${data.savings >= 0 ? 'gain' : 'loss'}">${fmt(data.savings)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Savings Rate</div><div class="stat-value">${fmtPct(data.savings_rate)}</div></div>`;
+        html += '</div>';
+
+        html += '<h3 style="font-size:0.875rem;font-weight:600;margin:1.5rem 0 0.75rem;">Income by Category</h3>';
+        html += renderCategoryTable(data.income_by_category || [], true);
+
+        html += '<h3 style="font-size:0.875rem;font-weight:600;margin:1.5rem 0 0.75rem;">Expenses by Category</h3>';
+        html += renderCategoryTable(data.expense_by_category || [], false);
+
+        return html;
+    }
+
+    function renderSpendingTab(data) {
+        const expenses = data.expense_by_category || [];
+        const total = Math.abs(data.total_expense);
+
+        let html = '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Spending</div><div class="stat-value loss">${fmt(data.total_expense)}</div></div>`;
+        html += '</div>';
+
+        html += renderCategoryTable(expenses, false);
+        return html;
+    }
+
+    function renderIncomeTab(data) {
+        const income = data.income_by_category || [];
+
+        let html = '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Total Income</div><div class="stat-value gain">${fmt(data.total_income)}</div></div>`;
+        html += '</div>';
+
+        html += renderCategoryTable(income, true);
+        return html;
+    }
+
+    function renderCategoryTable(categories, isIncome) {
+        if (!categories || categories.length === 0) {
+            return '<p style="color:var(--color-text-secondary);font-size:0.8125rem;">No data</p>';
+        }
+        let html = '<div class="glass-panel" style="overflow-x:auto;"><table><thead><tr><th>Category</th><th style="text-align:right;">Amount</th></tr></thead><tbody>';
+        categories.forEach(c => {
+            const cls = isIncome ? 'gain' : 'loss';
+            const display = isIncome ? fmt(c.amount) : fmt(c.abs_amount);
+            html += `<tr><td>${c.category}</td><td style="text-align:right;" class="${cls}">${display}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    function isDark() { return document.documentElement.dataset.theme === 'dark'; }
+
+    function renderLineChart(containerId, dates, series, yFormatter) {
+        const container = document.getElementById(containerId);
+        if (!container) return null;
+        const existing = echarts.getInstanceByDom(container);
+        if (existing) existing.dispose();
+        const chart = echarts.init(container);
+        const dark = isDark();
+        const textColor = dark ? '#b3a8c8' : '#4a3f5c';
+        const lineColors = ['#7d6b96', '#22c55e', '#3b82f6', '#f59e0b'];
+
+        const seriesConfig = series.map((s, i) => ({
+            name: s.name,
+            type: 'line',
+            data: s.data,
+            smooth: true,
+            showSymbol: false,
+            lineStyle: {width: i === 0 ? 2 : 1.5},
+            itemStyle: {color: lineColors[i % lineColors.length]},
+            areaStyle: i === 0 ? {opacity: 0.08} : undefined,
+        }));
+
+        chart.setOption({
+            grid: {left: 80, right: 20, top: 40, bottom: 30},
+            tooltip: {trigger: 'axis', formatter: function(params) {
+                let tip = params[0].axisValue + '<br>';
+                params.forEach(p => { tip += `${p.marker} ${p.seriesName}: ${yFormatter(p.value)}<br>`; });
+                return tip;
+            }},
+            legend: series.length > 1 ? {data: series.map(s => s.name), textStyle: {color: textColor}, top: 5} : undefined,
+            xAxis: {type: 'category', data: dates, axisLabel: {color: textColor, fontSize: 10, rotate: 0, interval: Math.floor(dates.length / 6)}, axisLine: {lineStyle: {color: dark ? '#333' : '#ddd'}}},
+            yAxis: {type: 'value', axisLabel: {color: textColor, fontSize: 10, formatter: v => yFormatter(v)}, splitLine: {lineStyle: {color: dark ? '#2a2a3a' : '#f0f0f0'}}},
+            series: seriesConfig,
+        });
+        return chart;
+    }
+
+    window.addEventListener('resize', function() {
+        document.querySelectorAll('[id$="-chart"]').forEach(function(el) {
+            var inst = echarts.getInstanceByDom(el);
+            if (inst) inst.resize();
+        });
+    });
+
+    let fireAge = parseInt(localStorage.getItem('fire_age') || '35');
+    let fireTargetAge = parseInt(localStorage.getItem('fire_target_age') || '60');
+
+    async function loadFIRE() {
+        const el = document.getElementById('section-fire');
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Calculating FIRE...</p>';
+
+        const data = await apiFetch('api/reports/fire');
+
+        const growthDollar = data.investment_growth_dollar;
+        const expenses = data.annual_expenses;
+        const isFIRE = data.growth_exceeds_expenses;
+        const yearsLabel = data.years_to_fire === 0 ? 'FIRE achieved!' : data.years_to_fire > 0 ? `~${Math.ceil(data.years_to_fire)} years` : 'N/A';
+
+        let html = '<h2 style="font-size:1.125rem;font-weight:600;margin-bottom:1rem;">FIRE Calculator</h2>';
+
+        html += '<div class="glass-panel" style="padding:1.25rem;margin-bottom:1.25rem;border-left:3px solid var(--color-accent);">';
+        html += '<h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.75rem;">How we calculate FIRE</h3>';
+        html += '<div style="color:var(--color-text-secondary);font-size:0.8125rem;line-height:1.7;">';
+        html += '<p style="margin-bottom:0.5rem;"><strong>FIRE</strong> (Financial Independence, Retire Early) = the point where your investment portfolio grows more per year than you spend. When that happens, you can live off your investment returns alone.</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Investment Growth ($/yr)</strong> — How much your brokerage accounts grew in the last 12 months (current portfolio value minus value 12 months ago). This is real dollar growth, not a percentage.</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Annual Expenses</strong> — Total spending in the last 12 months, excluding transfers between your own accounts and credit card payments (which are just paying off existing charges, not new spending).</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Surplus / Gap</strong> — Investment growth minus expenses. Positive means your investments grew more than you spent. Negative means the gap you need to close.</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Years to FIRE</strong> — Projects forward at your current investment growth rate, with expenses growing at your current expense inflation rate. The year when projected annual growth first exceeds projected annual expenses.</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Savings Rate</strong> — (Investment growth + transaction income - expenses) / (investment growth + transaction income). Includes unrealized gains as income — buy-borrow-die strategy means portfolio growth is usable wealth, not just paper gains.</p>';
+        html += '<p style="margin-bottom:0.5rem;"><strong>Projection chart</strong> — Shows annual dollar growth (portfolio × return rate) at multiple rates. The dashed red line is your expenses, growing at your current inflation rate. Where any growth line crosses the expense line = FIRE at that return rate.</p>';
+        html += '<p style="margin-bottom:0;"><strong>Age & horizon</strong> — Set your current age and target retirement age below. The projection chart scales to show exactly the years remaining. Your settings are saved locally.</p>';
+        html += '</div></div>';
+
+        const yearsHorizon = Math.max(fireTargetAge - fireAge, 5);
+        html += '<div class="glass-panel" style="padding:1rem;margin-bottom:1rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap;">';
+        html += `<div style="display:flex;align-items:center;gap:0.5rem;"><label style="font-size:0.8125rem;font-weight:500;">Current Age</label><input type="number" id="fire-age" value="${fireAge}" min="18" max="99" style="width:70px;" onchange="updateFireAge()"></div>`;
+        html += `<div style="display:flex;align-items:center;gap:0.5rem;"><label style="font-size:0.8125rem;font-weight:500;">Target Retirement Age</label><input type="number" id="fire-target-age" value="${fireTargetAge}" min="30" max="99" style="width:70px;" onchange="updateFireAge()"></div>`;
+        html += `<span style="font-size:0.8125rem;color:var(--color-text-secondary);">${yearsHorizon} years to target</span>`;
+        html += '</div>';
+
+        html += '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Investment Growth ($/yr)</div><div class="stat-value ${retCls(growthDollar)}">${fmt(growthDollar)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Annual Expenses</div><div class="stat-value loss">${fmt(expenses)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">${isFIRE ? 'Surplus' : 'Gap'}</div><div class="stat-value ${isFIRE ? 'gain' : 'loss'}">${fmt(data.surplus)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Status</div><div class="stat-value ${isFIRE ? 'gain' : ''}">${isFIRE ? 'FIRE!' : yearsLabel}</div></div>`;
+        html += '</div>';
+
+        html += '<div class="stat-grid">';
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Portfolio</div><div class="stat-value">${fmt(data.investment_value)}</div></div>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Growth Rate YoY</div><div class="stat-value ${retCls(data.investment_growth_yoy)}">${fmtReturn(data.investment_growth_yoy)}</div></div>`;
+        const expGrowthDisplay = data.expense_growth_yoy === 0
+            ? '<span style="color:var(--color-text-secondary);">N/A</span><div style="font-size:0.6875rem;color:var(--color-text-secondary);font-weight:400;margin-top:0.25rem;">Need 6+ months in both years</div>'
+            : `<span class="${data.expense_growth_yoy <= 0 ? 'gain' : 'loss'}">${fmtReturn(data.expense_growth_yoy)}</span>`;
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Expense Growth YoY</div><div class="stat-value">${expGrowthDisplay}</div></div>`;
+        const savingsDisplay = data.savings_rate === 0 ? '<span style="color:var(--color-text-secondary);">N/A</span>' : fmtPct(data.savings_rate);
+        html += `<div class="glass-panel stat-card"><div class="stat-label">Savings Rate</div><div class="stat-value">${savingsDisplay}</div></div>`;
+        html += '</div>';
+
+        html += '<div class="glass-panel" style="padding:1.25rem;margin-bottom:1rem;">';
+        html += '<h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.5rem;">When does investment growth outpace expenses?</h3>';
+        html += '<p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">Each line shows annual $ growth of your portfolio at different return rates. Where a line crosses the expense line = FIRE.</p>';
+        html += '<div id="fire-projection-chart" style="width:100%;height:320px;"></div>';
+        html += '</div>';
+
+        let monthlyInvestmentIncome = 0;
+        let incomeSource = '';
+        if (growthDollar > 0) {
+            monthlyInvestmentIncome = growthDollar / 12;
+            incomeSource = 'Based on your actual investment growth over the last year';
+        } else if (data.investment_value > 0) {
+            monthlyInvestmentIncome = (data.investment_value * 0.10) / 12;
+            incomeSource = 'Estimated at 10% annual return (S&P 500 historical average) — not enough history for actual growth data yet';
+        }
+        const expPts = data.monthly_expenses || [];
+
+        if (expPts.length > 0) {
+            html += '<div class="glass-panel" style="padding:1rem;margin-bottom:1rem;">';
+            html += '<h3 style="font-size:0.875rem;font-weight:600;margin-bottom:0.25rem;">Can Your Investments Cover Your Expenses?</h3>';
+            html += `<p style="color:var(--color-text-secondary);font-size:0.8125rem;margin-bottom:0.75rem;">The green dashed line is your monthly investment income capacity (${fmt(monthlyInvestmentIncome)}/mo). ${incomeSource}. If the line is above the expense bars, your investments are generating enough to cover your monthly spending.</p>`;
+            html += '<div id="fire-history-chart" style="width:100%;height:280px;"></div>';
+            html += '</div>';
+        }
+
+        el.innerHTML = html;
+
+        renderProjectionChart(data.investment_value, data.annual_expenses, data.investment_growth_yoy, data.expense_growth_yoy, yearsHorizon);
+
+        if (expPts.length > 0) {
+            const months = expPts.map(p => p.month);
+            const expenseData = expPts.map(p => p.amount);
+
+            const container = document.getElementById('fire-history-chart');
+            if (container) {
+                const existing = echarts.getInstanceByDom(container);
+                if (existing) existing.dispose();
+                const chart = echarts.init(container);
+                const dark = isDark();
+                const textColor = dark ? '#b3a8c8' : '#4a3f5c';
+
+                chart.setOption({
+                    grid: {left: 80, right: 20, top: 30, bottom: 30},
+                    tooltip: {trigger: 'axis', formatter: function(params) {
+                        let tip = params[0].axisValue + '<br>';
+                        params.forEach(p => { tip += p.marker + ' ' + p.seriesName + ': ' + fmt(p.value) + '<br>'; });
+                        return tip;
+                    }},
+                    legend: {data: ['Monthly Expenses', 'Monthly Investment Income'], textStyle: {color: textColor, fontSize: 10}, top: 0},
+                    xAxis: {type: 'category', data: months, axisLabel: {color: textColor, fontSize: 10}, axisLine: {lineStyle: {color: dark ? '#333' : '#ddd'}}},
+                    yAxis: {type: 'value', axisLabel: {color: textColor, fontSize: 10, formatter: v => fmt(v)}, splitLine: {lineStyle: {color: dark ? '#2a2a3a' : '#f0f0f0'}}},
+                    series: [
+                        {name: 'Monthly Expenses', type: 'bar', data: expenseData, itemStyle: {color: '#ef4444', opacity: 0.7}},
+                        {name: 'Monthly Investment Income', type: 'line', data: Array(months.length).fill(monthlyInvestmentIncome), lineStyle: {width: 2.5, type: 'dashed'}, itemStyle: {color: '#22c55e'}, showSymbol: false},
+                    ],
+                });
+            }
+        }
+    }
+
+    function updateFireAge() {
+        const ageEl = document.getElementById('fire-age');
+        const targetEl = document.getElementById('fire-target-age');
+        fireAge = parseInt(ageEl.value) || 35;
+        fireTargetAge = parseInt(targetEl.value) || 60;
+        localStorage.setItem('fire_age', String(fireAge));
+        localStorage.setItem('fire_target_age', String(fireTargetAge));
+        loadFIRE();
+    }
+
+    function renderProjectionChart(currentValue, annualExpenses, actualGrowth, expenseGrowth, yearsHorizon) {
+        const container = document.getElementById('fire-projection-chart');
+        if (!container) return;
+        const existing = echarts.getInstanceByDom(container);
+        if (existing) existing.dispose();
+        const chart = echarts.init(container);
+        const dark = isDark();
+        const textColor = dark ? '#b3a8c8' : '#4a3f5c';
+
+        const years = yearsHorizon || 25;
+        const rates = [
+            {rate: actualGrowth / 100, label: `Current (${fmtPct(actualGrowth)})`, color: '#7d6b96'},
+            {rate: 0.08, label: '8%', color: '#3b82f6'},
+            {rate: 0.12, label: '12%', color: '#22c55e'},
+            {rate: 0.15, label: '15%', color: '#f59e0b'},
+            {rate: 0.18, label: '18%', color: '#a855f7'},
+        ];
+
+        const expRate = Math.max(expenseGrowth / 100, 0);
+        const labels = [];
+        for (let i = 0; i <= years; i++) labels.push('Age ' + (fireAge + i));
+
+        const seriesConfig = rates.filter(r => r.rate > 0).map(r => {
+            const values = [];
+            let portfolio = currentValue;
+            for (let i = 0; i <= years; i++) {
+                values.push(Math.round(portfolio * r.rate));
+                portfolio *= (1 + r.rate);
+            }
+            return {
+                name: r.label,
+                type: 'line',
+                data: values,
+                smooth: true,
+                showSymbol: false,
+                lineStyle: {width: r.rate === actualGrowth / 100 ? 3 : 1.5},
+                itemStyle: {color: r.color},
+            };
+        });
+
+        const expenseLine = [];
+        let projExp = annualExpenses;
+        for (let i = 0; i <= years; i++) {
+            expenseLine.push(Math.round(projExp));
+            projExp *= (1 + expRate);
+        }
+        seriesConfig.push({
+            name: 'Annual Expenses',
+            type: 'line',
+            data: expenseLine,
+            lineStyle: {width: 2.5, type: 'dashed'},
+            itemStyle: {color: dark ? '#e88b8b' : '#dc2626'},
+            showSymbol: false,
+        });
+
+        chart.setOption({
+            grid: {left: 90, right: 20, top: 40, bottom: 30},
+            tooltip: {trigger: 'axis', formatter: function(params) {
+                let tip = 'Year ' + params[0].axisValue + '<br>';
+                params.forEach(p => { tip += p.marker + ' ' + p.seriesName + ': ' + fmt(p.value) + '/yr<br>'; });
+                return tip;
+            }},
+            legend: {data: seriesConfig.map(s => s.name), textStyle: {color: textColor, fontSize: 10}, top: 0},
+            xAxis: {type: 'category', data: labels, axisLabel: {color: textColor, fontSize: 10, interval: 4}, axisLine: {lineStyle: {color: dark ? '#333' : '#ddd'}}},
+            yAxis: {type: 'value', axisLabel: {color: textColor, fontSize: 10, formatter: v => fmt(v)}, splitLine: {lineStyle: {color: dark ? '#2a2a3a' : '#f0f0f0'}}},
+            series: seriesConfig,
+        });
+    }
+
+    async function loadNetWorth() {
+        const el = document.getElementById('section-networth');
+        el.innerHTML = '<p style="color:var(--color-text-secondary);">Loading...</p>';
+
+        const [nwData, alData] = await Promise.all([
+            apiFetch('api/net-worth'),
+            apiFetch('api/snapshots/breakdown')
+        ]);
+        const points = nwData.net_worth || [];
+        const alSnaps = alData.snapshots || [];
+
+        let html = '<h2 style="font-size:1.125rem; font-weight:600; margin-bottom:1rem;">Net Worth History</h2>';
+        if (points.length > 0) {
+            const latest = points[points.length - 1];
+            const first = points[0];
+            const change = latest.balance - first.balance;
+            const changePct = first.balance !== 0 ? (change / Math.abs(first.balance)) * 100 : 0;
+
+            let latestAssets = 0, latestLiabilities = 0;
+            if (alSnaps.length > 0) {
+                const last = alSnaps[alSnaps.length - 1];
+                latestAssets = last.assets;
+                latestLiabilities = last.liabilities;
+            }
+
+            html += '<div class="stat-grid">';
+            html += `<div class="glass-panel stat-card"><div class="stat-label">Net Worth</div><div class="stat-value">${fmt(latest.balance)}</div></div>`;
+            html += `<div class="glass-panel stat-card"><div class="stat-label">Assets</div><div class="stat-value gain">${fmt(latestAssets)}</div></div>`;
+            html += `<div class="glass-panel stat-card"><div class="stat-label">Liabilities</div><div class="stat-value loss">${fmt(Math.abs(latestLiabilities))}</div></div>`;
+            html += `<div class="glass-panel stat-card"><div class="stat-label">All-Time Change</div><div class="stat-value ${change >= 0 ? 'gain' : 'loss'}">${fmt(change)} (${fmtReturn(changePct)})</div></div>`;
+            html += '</div>';
+            html += '<div class="glass-panel" style="padding:1rem;margin-bottom:1rem;"><div id="nw-chart" style="width:100%;height:300px;"></div></div>';
+        }
+
+        if (alSnaps.length > 0) {
+            html += '<h3 style="font-size:0.875rem;font-weight:600;margin:1rem 0 0.75rem;">Assets vs Liabilities (Monthly)</h3>';
+            html += '<div class="glass-panel" style="padding:1rem;margin-bottom:1rem;"><div id="al-chart" style="width:100%;height:280px;"></div></div>';
+
+            html += '<div class="glass-panel" style="overflow-x:auto;max-height:300px;"><table><thead><tr><th>Month</th><th style="text-align:right;">Assets</th><th style="text-align:right;">Liabilities</th><th style="text-align:right;">Net Worth</th></tr></thead><tbody>';
+            alSnaps.slice().reverse().forEach(s => {
+                html += `<tr><td>${s.month}</td><td style="text-align:right;" class="gain">${fmt(s.assets)}</td><td style="text-align:right;" class="loss">${fmt(Math.abs(s.liabilities))}</td><td style="text-align:right;">${fmt(s.net_worth)}</td></tr>`;
+            });
+            html += '</tbody></table></div>';
+        }
+
+        el.innerHTML = html;
+
+        if (points.length > 0) {
+            renderLineChart('nw-chart',
+                points.map(p => p.date),
+                [{name: 'Net Worth', data: points.map(p => p.balance)}],
+                v => fmt(v)
+            );
+        }
+
+        if (alSnaps.length > 0) {
+            renderLineChart('al-chart',
+                alSnaps.map(s => s.month),
+                [
+                    {name: 'Assets', data: alSnaps.map(s => s.assets)},
+                    {name: 'Liabilities', data: alSnaps.map(s => Math.abs(s.liabilities))},
+                    {name: 'Net Worth', data: alSnaps.map(s => s.net_worth)},
+                ],
+                v => fmt(v)
+            );
+        }
+    }
+
+    async function triggerSync() {
+        const indicator = document.getElementById('sync-indicator');
+        indicator.classList.add('syncing');
+        try {
+            await fetch('api/sync', {method: 'POST'});
+            loadSyncStatus();
+            loadSection(currentSection);
+        } finally {
+            indicator.classList.remove('syncing');
+        }
+    }
+
+    async function loadSyncStatus() {
+        const data = await apiFetch('api/sync-status');
+        const el = document.getElementById('sync-status-text');
+        if (data.last_sync_at) {
+            const d = new Date(data.last_sync_at);
+            el.textContent = 'Last sync: ' + d.toLocaleTimeString();
+        } else {
+            el.textContent = 'Never synced';
+        }
+    }
+
+    (function() {
+        const html = document.documentElement;
+        html.setAttribute('data-theme', localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        window.addEventListener('message', e => { if (e.data && e.data.type === 'theme-change') html.setAttribute('data-theme', e.data.theme); });
+    })();
+
+    function loadDocs() {
+        document.querySelectorAll('.sidebar-item').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('[id^="section-"]').forEach(el => el.style.display = 'none');
+        const content = document.getElementById('main-content');
+        fetch('/apps/mmoney/help?format=html')
+            .then(r => r.text())
+            .then(h => { content.innerHTML = h; });
+    }
+
+    loadDashboard();
+    loadSyncStatus();
+    lucide.createIcons();
+    </script>
+</body>
+</html>
+{{end}}
