@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const syncAutomationName = "MMoney Sync"
+const syncAutomationName = "MMoney: Sync"
 
 func RegisterSyncAutomation(coreURL, token, appURL string) {
 	if automationExists(coreURL, token, syncAutomationName) {
@@ -21,7 +21,7 @@ func RegisterSyncAutomation(coreURL, token, appURL string) {
 		"description": "Syncs financial data from MMoney every 10 minutes",
 		"dag_config": map[string]interface{}{
 			"dag_id":      "mmoney_sync",
-			"name":        "MMoney Sync",
+			"name":        "MMoney: Sync",
 			"description": "Calls the mmoney app sync endpoint",
 			"nodes": []map[string]interface{}{
 				{
