@@ -1,6 +1,6 @@
 .PHONY: build test install uninstall start stop restart status logs logs-err \
        build-docker start-docker stop-docker restart-docker logs-docker \
-       lint strict-lint swagger build-all build-release
+       docker-push lint strict-lint swagger build-all build-release
 
 APP_NAME := mmoney
 PORT ?= 9220
@@ -123,6 +123,17 @@ restart-docker: stop-docker start-docker
 
 logs-docker:
 	@docker logs -f mmoney
+
+# ── Docker Registry (ghcr.io) ────────────────────────────────
+
+GHCR_IMAGE := ghcr.io/localitas/localitas-app-$(APP_NAME)
+
+docker-push: test build-docker
+	docker tag $(APP_NAME):latest $(GHCR_IMAGE):latest
+	docker tag $(APP_NAME):latest $(GHCR_IMAGE):$(VERSION)
+	docker push $(GHCR_IMAGE):latest
+	docker push $(GHCR_IMAGE):$(VERSION)
+	@echo "✅ Pushed $(GHCR_IMAGE):latest and $(GHCR_IMAGE):$(VERSION)"
 
 # ── Release ───────────────────────────────────────────────────
 
