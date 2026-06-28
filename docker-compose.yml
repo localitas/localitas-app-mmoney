@@ -1,6 +1,7 @@
 services:
   web:
     image: ghcr.io/localitas/localitas-app-mmoney:latest
+    command: ["serve", "--listen", ":8000", "--base-path", "/apps/ext/mmoney/"]
     ports:
       - "${APP_PORT:-9220}:8000"
     environment:
