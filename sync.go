@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"time"
 
@@ -135,7 +134,7 @@ func (a *App) RunSync(ctx context.Context) error {
 			MonarchCreatedAt:  acc.CreatedAt,
 			MonarchUpdatedAt:  acc.UpdatedAt,
 		}); err != nil {
-			log.Printf("mmoney: upsert account %s failed: %v", acc.ID, err)
+			logger.Error("upsert account failed", "account_id", acc.ID, "error", err)
 		} else {
 			accountCount++
 		}
@@ -143,7 +142,7 @@ func (a *App) RunSync(ctx context.Context) error {
 
 	txCount, err = a.syncTransactions(ctx, svc)
 	if err != nil {
-		log.Printf("mmoney: transaction sync error: %v", err)
+		logger.Error("transaction sync error", "error", err)
 	}
 
 	a.syncCategories(ctx, svc)
@@ -155,7 +154,7 @@ func (a *App) RunSync(ctx context.Context) error {
 	a.syncCreditScores(ctx, svc)
 
 	a.Store.LogSync(ctx, startedAt, "ok", "", accountCount, txCount)
-	log.Printf("mmoney: sync complete — %d accounts, %d transactions", accountCount, txCount)
+	logger.Info("sync complete", "accounts", accountCount, "transactions", txCount)
 	return nil
 }
 
@@ -204,7 +203,7 @@ func (a *App) syncTransactions(ctx context.Context, svc *monarch.Service) (int, 
 			MonarchCreatedAt:   tx.CreatedAt,
 			MonarchUpdatedAt:   tx.UpdatedAt,
 		}); err != nil {
-			log.Printf("mmoney: upsert tx %s failed: %v", tx.ID, err)
+			logger.Error("upsert transaction failed", "tx_id", tx.ID, "error", err)
 		} else {
 			count++
 		}
@@ -217,7 +216,7 @@ func (a *App) syncTransactions(ctx context.Context, svc *monarch.Service) (int, 
 func (a *App) syncCategories(ctx context.Context, svc *monarch.Service) {
 	cats, err := svc.ListCategories(ctx)
 	if err != nil {
-		log.Printf("mmoney: category sync error: %v", err)
+		logger.Error("category sync error", "error", err)
 		return
 	}
 	for _, c := range cats {
@@ -240,7 +239,7 @@ func (a *App) syncBudgets(ctx context.Context, svc *monarch.Service) {
 
 	budgets, err := svc.ListBudgets(ctx, startDate, endDate)
 	if err != nil {
-		log.Printf("mmoney: budget sync error: %v", err)
+		logger.Error("budget sync error", "error", err)
 		return
 	}
 	for _, b := range budgets {
@@ -262,7 +261,7 @@ func (a *App) syncRecurring(ctx context.Context, svc *monarch.Service) {
 
 	recurring, err := svc.ListRecurring(ctx, startDate, endDate)
 	if err != nil {
-		log.Printf("mmoney: recurring sync error: %v", err)
+		logger.Error("recurring sync error", "error", err)
 		return
 	}
 	for _, r := range recurring {
@@ -282,7 +281,7 @@ func (a *App) syncRecurring(ctx context.Context, svc *monarch.Service) {
 func (a *App) syncInvestments(ctx context.Context, svc *monarch.Service) {
 	portfolio, err := svc.GetInvestmentPortfolio(ctx)
 	if err != nil {
-		log.Printf("mmoney: investment sync error: %v", err)
+		logger.Error("investment sync error", "error", err)
 		return
 	}
 	securityIDs := make([]string, 0)
@@ -332,7 +331,7 @@ func (a *App) syncInvestmentPerformance(ctx context.Context, svc *monarch.Servic
 
 	perfs, err := svc.GetSecurityPerformance(ctx, securityIDs, startDate, endDate)
 	if err != nil {
-		log.Printf("mmoney: investment performance sync error: %v", err)
+		logger.Error("investment performance sync error", "error", err)
 		return
 	}
 
@@ -352,13 +351,13 @@ func (a *App) syncInvestmentPerformance(ctx context.Context, svc *monarch.Servic
 	}
 
 	a.Store.SetConfig(ctx, "last_perf_sync_date", endDate)
-	log.Printf("mmoney: synced %d investment performance points", count)
+	logger.Info("synced investment performance", "count", count)
 }
 
 func (a *App) syncSnapshots(ctx context.Context, svc *monarch.Service) {
 	snapshots, err := svc.GetAggregateSnapshots(ctx, "", "", "")
 	if err != nil {
-		log.Printf("mmoney: snapshot sync error: %v", err)
+		logger.Error("snapshot sync error", "error", err)
 		return
 	}
 	for _, s := range snapshots {
@@ -373,7 +372,7 @@ func (a *App) syncAssetLiabilitySnapshots(ctx context.Context, svc *monarch.Serv
 	startDate := "2020-01-01"
 	snapshots, groups, err := svc.GetSnapshotsByAccountType(ctx, startDate, "month")
 	if err != nil {
-		log.Printf("mmoney: asset/liability snapshot sync error: %v", err)
+		logger.Error("asset/liability snapshot sync error", "error", err)
 		return
 	}
 
@@ -403,13 +402,13 @@ func (a *App) syncAssetLiabilitySnapshots(ctx context.Context, svc *monarch.Serv
 		snap.NetWorth = snap.Assets + snap.Liabilities
 		a.Store.UpsertAssetLiabilitySnapshot(ctx, *snap)
 	}
-	log.Printf("mmoney: synced %d asset/liability monthly snapshots", len(monthData))
+	logger.Info("synced asset/liability monthly snapshots", "count", len(monthData))
 }
 
 func (a *App) syncCreditScores(ctx context.Context, svc *monarch.Service) {
 	scores, err := svc.GetCreditHistory(ctx)
 	if err != nil {
-		log.Printf("mmoney: credit score sync error: %v", err)
+		logger.Error("credit score sync error", "error", err)
 		return
 	}
 	for _, s := range scores {

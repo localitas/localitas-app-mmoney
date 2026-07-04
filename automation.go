@@ -3,7 +3,6 @@ package mmoney
 import (
 	"bytes"
 	"encoding/json"
-	"log"
 	"net/http"
 	"time"
 )
@@ -12,7 +11,7 @@ const syncAutomationName = "MMoney: Sync"
 
 func RegisterSyncAutomation(coreURL, token, appURL string) {
 	if automationExists(coreURL, token, syncAutomationName) {
-		log.Printf("mmoney: sync automation already registered")
+		logger.Info("sync automation already registered")
 		return
 	}
 
@@ -54,7 +53,7 @@ func RegisterSyncAutomation(coreURL, token, appURL string) {
 	b, _ := json.Marshal(body)
 	req, err := http.NewRequest("POST", coreURL+"/apps/automation/api/automations", bytes.NewReader(b))
 	if err != nil {
-		log.Printf("mmoney: failed to create automation request: %v", err)
+		logger.Error("failed to create automation request", "error", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -65,15 +64,15 @@ func RegisterSyncAutomation(coreURL, token, appURL string) {
 	c := &http.Client{Timeout: 10 * time.Second}
 	resp, err := c.Do(req)
 	if err != nil {
-		log.Printf("mmoney: failed to register sync automation: %v", err)
+		logger.Error("failed to register sync automation", "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK {
-		log.Printf("mmoney: registered sync automation (every 10 min)")
+		logger.Info("registered sync automation", "interval", "every 10 min")
 	} else {
-		log.Printf("mmoney: automation registration returned %d", resp.StatusCode)
+		logger.Warn("automation registration returned unexpected status", "status", resp.StatusCode)
 	}
 }
 
