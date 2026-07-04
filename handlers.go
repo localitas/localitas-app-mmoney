@@ -2,10 +2,11 @@ package mmoney
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/localitas/localitas-go/httputil"
 )
 
 type handler struct {
@@ -15,10 +16,10 @@ type handler struct {
 func (h *handler) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 	accounts, err := h.app.Store.ListAccounts(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list accounts: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list accounts: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"accounts": accounts})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"accounts": accounts})
 }
 
 func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request) {
@@ -42,10 +43,10 @@ func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request)
 
 	txs, total, err := h.app.Store.ListTransactions(r.Context(), startDate, endDate, limit, offset)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list transactions: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list transactions: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"transactions": txs,
 		"total":        total,
 		"limit":        limit,
@@ -56,53 +57,53 @@ func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request)
 func (h *handler) handleListCategories(w http.ResponseWriter, r *http.Request) {
 	cats, err := h.app.Store.ListCategories(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list categories: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list categories: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"categories": cats})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"categories": cats})
 }
 
 func (h *handler) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 	month := r.URL.Query().Get("month")
 	budgets, err := h.app.Store.ListBudgets(r.Context(), month)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list budgets: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list budgets: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"budgets": budgets})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"budgets": budgets})
 }
 
 func (h *handler) handleListRecurring(w http.ResponseWriter, r *http.Request) {
 	recurring, err := h.app.Store.ListRecurring(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list recurring: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list recurring: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"recurring": recurring})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"recurring": recurring})
 }
 
 func (h *handler) handleListInvestments(w http.ResponseWriter, r *http.Request) {
 	investments, err := h.app.Store.ListInvestments(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list investments: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list investments: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"investments": investments})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"investments": investments})
 }
 
 func (h *handler) handleListCreditScores(w http.ResponseWriter, r *http.Request) {
 	scores, err := h.app.Store.ListCreditScores(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list credit scores: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list credit scores: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"credit_scores": scores})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"credit_scores": scores})
 }
 
 func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Request) {
 	securityID := r.URL.Query().Get("security_id")
 	if securityID == "" {
-		writeErr(w, http.StatusBadRequest, "security_id parameter required")
+		writeErr(w, r, http.StatusBadRequest, "security_id parameter required")
 		return
 	}
 	startDate := r.URL.Query().Get("start")
@@ -110,19 +111,19 @@ func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Req
 
 	perf, err := h.app.Store.ListInvestmentPerformance(r.Context(), securityID, startDate, endDate)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get investment performance: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get investment performance: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"performance": perf})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"performance": perf})
 }
 
 func (h *handler) handleAssetLiabilitySnapshots(w http.ResponseWriter, r *http.Request) {
 	snapshots, err := h.app.Store.ListAssetLiabilitySnapshots(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get snapshots: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get snapshots: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
 }
 
 func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
@@ -130,10 +131,10 @@ func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	endDate := r.URL.Query().Get("end")
 	snapshots, err := h.app.Store.ListSnapshots(r.Context(), startDate, endDate)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to list snapshots: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to list snapshots: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
 }
 
 func (h *handler) handleNetWorth(w http.ResponseWriter, r *http.Request) {
@@ -141,14 +142,14 @@ func (h *handler) handleNetWorth(w http.ResponseWriter, r *http.Request) {
 	endDate := r.URL.Query().Get("end")
 	snapshots, err := h.app.Store.ListSnapshots(r.Context(), startDate, endDate)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get net worth: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get net worth: %v", err)
 		return
 	}
 	points := make([]NetWorthPoint, len(snapshots))
 	for i, s := range snapshots {
 		points[i] = NetWorthPoint{Date: s.Date, Balance: s.Balance}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"net_worth": points})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"net_worth": points})
 }
 
 func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +164,7 @@ func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
 
 	txs, _, err := h.app.Store.ListTransactions(r.Context(), startDate, endDate, 10000, 0)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to compute cashflow: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to compute cashflow: %v", err)
 		return
 	}
 
@@ -181,7 +182,7 @@ func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
 		savingsRate = savings / income * 100
 	}
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{
 		"income":       income,
 		"expense":      expense,
 		"savings":      savings,
@@ -194,24 +195,24 @@ func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
 func (h *handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
 	if q == "" {
-		writeErr(w, http.StatusBadRequest, "q parameter required")
+		writeErr(w, r, http.StatusBadRequest, "q parameter required")
 		return
 	}
 	txs, err := h.app.Store.SearchTransactions(r.Context(), q, 50)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "search failed: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "search failed: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"transactions": txs})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"transactions": txs})
 }
 
 func (h *handler) handleFIRE(w http.ResponseWriter, r *http.Request) {
 	report, err := h.app.Store.GetFIREReport(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get FIRE report: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get FIRE report: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, report)
+	writeJSON(w, r, http.StatusOK, report)
 }
 
 func (h *handler) handleCashflowReport(w http.ResponseWriter, r *http.Request) {
@@ -226,36 +227,36 @@ func (h *handler) handleCashflowReport(w http.ResponseWriter, r *http.Request) {
 	recurringOnly := r.URL.Query().Get("recurring") == "1"
 	report, err := h.app.Store.GetCashflowReport(r.Context(), startDate, endDate, recurringOnly)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get cashflow report: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get cashflow report: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, report)
+	writeJSON(w, r, http.StatusOK, report)
 }
 
 func (h *handler) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.app.Store.GetLastSync(r.Context())
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get sync status: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get sync status: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, status)
+	writeJSON(w, r, http.StatusOK, status)
 }
 
 func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.app.RunSync(r.Context()); err != nil {
-		writeErr(w, http.StatusInternalServerError, "sync failed: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "ok"})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "ok"})
 }
 
 func (h *handler) handleSyncHistory(w http.ResponseWriter, r *http.Request) {
 	history, err := h.app.Store.ListSyncHistory(r.Context(), 50)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get sync history: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get sync history: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"history": history})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"history": history})
 }
 
 func (h *handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
@@ -264,38 +265,34 @@ func (h *handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		Value string `json:"value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid body")
+		writeErr(w, r, http.StatusBadRequest, "invalid body")
 		return
 	}
 	if body.Key == "" {
-		writeErr(w, http.StatusBadRequest, "key required")
+		writeErr(w, r, http.StatusBadRequest, "key required")
 		return
 	}
 	if err := h.app.Store.SetConfig(r.Context(), body.Key, body.Value); err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to set config: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to set config: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"key": body.Key, "value": body.Value})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"key": body.Key, "value": body.Value})
 }
 
 func (h *handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
 	value, err := h.app.Store.GetConfig(r.Context(), key)
 	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "failed to get config: %v", err)
+		writeErr(w, r, http.StatusInternalServerError, "failed to get config: %v", err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"key": key, "value": value})
+	writeJSON(w, r, http.StatusOK, map[string]interface{}{"key": key, "value": value})
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+func writeJSON(w http.ResponseWriter, r *http.Request, status int, v interface{}) {
+	httputil.WriteResponse(w, r, status, v)
 }
 
-func writeErr(w http.ResponseWriter, status int, format string, args ...interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf(format, args...)})
+func writeErr(w http.ResponseWriter, r *http.Request, status int, format string, args ...interface{}) {
+	httputil.WriteError(w, r, status, format, args...)
 }
