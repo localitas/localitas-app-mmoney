@@ -1,11 +1,13 @@
 package mmoney
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
+	client "github.com/localitas/localitas-go"
 	"github.com/localitas/localitas-go/httputil"
 )
 
@@ -243,6 +245,17 @@ func (h *handler) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
+	work := func(ctx context.Context) (map[string]interface{}, error) {
+		if err := h.app.RunSync(ctx); err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"status": "ok"}, nil
+	}
+
+	if client.RunAsync(w, r, h.app.client, work) {
+		return
+	}
+
 	if err := h.app.RunSync(r.Context()); err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
 		return
