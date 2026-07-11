@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	client "github.com/localitas/localitas-go"
 	"github.com/localitas/localitas-go/httputil"
 )
 
@@ -252,7 +251,7 @@ func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 		return map[string]interface{}{"status": "ok"}, nil
 	}
 
-	if client.RunAsync(w, r, h.app.client, work) {
+	if h.app.client.RunAsync(w, r, work) {
 		return
 	}
 
