@@ -113,6 +113,8 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 		logger.Error("service registry failed", "error", err)
 	}
 
+	mmoney.RegisterSyncAutomation(ctx, c, selfURL)
+
 	shutdown, err := mmoney.BroadcastMDNS(addr.Port, mmoney.DefaultHealth.Name)
 	if err != nil {
 		logger.Error("mDNS broadcast failed", "error", err)
