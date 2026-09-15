@@ -20,6 +20,9 @@ type App struct {
 	token             string
 	cachedToken       string
 	cachedTokenExpiry time.Time
+	// httpClient is a single pooled client for raw calls to core (vault) and to
+	// Monarch, created once here and reused instead of per-sync.
+	httpClient *http.Client
 }
 
 func New(c *client.Client, basePath string) *App {
@@ -27,8 +30,9 @@ func New(c *client.Client, basePath string) *App {
 		basePath = "/"
 	}
 	return &App{
-		BasePath: basePath,
-		client:   c,
+		BasePath:   basePath,
+		client:     c,
+		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
