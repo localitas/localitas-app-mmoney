@@ -15,6 +15,11 @@ import (
 
 const loginEndpoint = "https://api.monarch.com/auth/login/"
 
+// httpClient is a single pooled client for Monarch auth requests, created once
+// and reused across authentications (token refresh fires roughly every sync)
+// rather than allocating a fresh transport each time.
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
 type loginRequest struct {
 	Username      string `json:"username"`
 	Password      string `json:"password"`
@@ -59,8 +64,7 @@ func Authenticate(email, password, mfaCode, mfaSecret string) (*Session, error) 
 	req.Header.Set("Client-Platform", "web")
 	req.Header.Set("User-Agent", monarchgql.UserAgent())
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, monarcherr.New(monarcherr.NetworkUnreachable, "failed to reach Monarch API", monarcherr.CatNetwork, true, err)
 	}

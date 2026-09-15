@@ -37,7 +37,7 @@ func (a *App) resolveVaultCredential(ctx context.Context) (*VaultCredential, err
 		req.Header.Set("Authorization", "Bearer "+a.token)
 	}
 
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("vault request failed: %w", err)
 	}
