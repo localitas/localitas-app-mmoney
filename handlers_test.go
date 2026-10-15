@@ -261,3 +261,24 @@ func TestHandlerHealth(t *testing.T) {
 		t.Fatalf("expected status healthy, got %s", health.Status)
 	}
 }
+
+func TestHandlerSyncNotConfigured(t *testing.T) {
+	app := setupTestApp(t)
+	mux := http.NewServeMux()
+	app.RegisterRoutes(mux)
+
+	rr := doRequest(t, mux, "POST", "/api/sync", "")
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for an unconfigured sync, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "not configured") {
+		t.Fatalf("expected a not-configured message, got %s", rr.Body.String())
+	}
+
+	status := doRequest(t, mux, "GET", "/api/sync-status", "")
+	var resp SyncStatus
+	json.NewDecoder(status.Body).Decode(&resp)
+	if resp.Status != "never" {
+		t.Fatalf("an unconfigured sync must not be logged as an error, got status %s", resp.Status)
+	}
+}

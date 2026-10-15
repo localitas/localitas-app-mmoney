@@ -3,6 +3,7 @@ package mmoney
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -244,8 +245,13 @@ func (h *handler) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
+	// The scheduled sync of an app nobody has set up is skipped, not failed;
+	// a manual sync still reports what is missing.
 	work := func(ctx context.Context) (map[string]interface{}, error) {
 		if err := h.app.RunSync(ctx); err != nil {
+			if errors.Is(err, ErrNotConfigured) {
+				return map[string]interface{}{"status": "skipped", "reason": err.Error()}, nil
+			}
 			return nil, err
 		}
 		return map[string]interface{}{"status": "ok"}, nil
@@ -256,6 +262,10 @@ func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.app.RunSync(r.Context()); err != nil {
+		if errors.Is(err, ErrNotConfigured) {
+			writeErr(w, r, http.StatusBadRequest, "sync not configured: %v", err)
+			return
+		}
 		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
 		return
 	}
