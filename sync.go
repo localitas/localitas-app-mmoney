@@ -3,6 +3,7 @@ package mmoney
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -17,6 +18,9 @@ const monarchGraphQLEndpoint = "https://api.monarch.com/graphql"
 const sp500SecurityID = "119563102644090322"
 const bondsSecurityID = "78665972690706707"
 
+// ErrNotConfigured means no Monarch credential has been set up yet.
+var ErrNotConfigured = errors.New("no vault credential configured: set vault_credential_id in config")
+
 type VaultCredential struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
@@ -26,7 +30,7 @@ type VaultCredential struct {
 func (a *App) resolveVaultCredential(ctx context.Context) (*VaultCredential, error) {
 	credID, err := a.Store.GetConfig(ctx, "vault_credential_id")
 	if err != nil || credID == "" {
-		return nil, fmt.Errorf("no vault credential configured: set vault_credential_id in config")
+		return nil, ErrNotConfigured
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", a.coreURL+"/apps/vault/api/credentials/"+credID+"/secrets", nil)
@@ -89,7 +93,9 @@ func (a *App) RunSync(ctx context.Context) error {
 
 	gqlClient, err := a.authenticate(ctx)
 	if err != nil {
-		a.Store.LogSync(ctx, startedAt, "error", err.Error(), 0, 0)
+		if !errors.Is(err, ErrNotConfigured) {
+			a.Store.LogSync(ctx, startedAt, "error", err.Error(), 0, 0)
+		}
 		return err
 	}
 
