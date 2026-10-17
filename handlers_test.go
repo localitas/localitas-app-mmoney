@@ -60,6 +60,7 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, body strin
 	} else {
 		req = httptest.NewRequest(method, path, nil)
 	}
+	req.Header.Set("Authorization", "Bearer "+identity("admin-user", "admin"))
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	return rr

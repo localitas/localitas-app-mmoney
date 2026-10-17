@@ -88,24 +88,37 @@ func (a *App) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /{$}", a.handleIndex)
 	mux.HandleFunc("GET /swagger.json", HandleSwagger)
 	mux.HandleFunc("GET /help.md", handleHelpMarkdown)
-	mux.HandleFunc("GET /api/accounts", h.handleListAccounts)
-	mux.HandleFunc("GET /api/transactions", h.handleListTransactions)
-	mux.HandleFunc("GET /api/categories", h.handleListCategories)
-	mux.HandleFunc("GET /api/budgets", h.handleListBudgets)
-	mux.HandleFunc("GET /api/recurring", h.handleListRecurring)
-	mux.HandleFunc("GET /api/investments", h.handleListInvestments)
-	mux.HandleFunc("GET /api/investment-performance", h.handleInvestmentPerformance)
-	mux.HandleFunc("GET /api/credit", h.handleListCreditScores)
-	mux.HandleFunc("GET /api/snapshots", h.handleListSnapshots)
-	mux.HandleFunc("GET /api/snapshots/breakdown", h.handleAssetLiabilitySnapshots)
-	mux.HandleFunc("GET /api/net-worth", h.handleNetWorth)
-	mux.HandleFunc("GET /api/cashflow", h.handleCashflow)
-	mux.HandleFunc("GET /api/reports/cashflow", h.handleCashflowReport)
-	mux.HandleFunc("GET /api/reports/fire", h.handleFIRE)
-	mux.HandleFunc("GET /api/search", h.handleSearch)
-	mux.HandleFunc("GET /api/sync-status", h.handleSyncStatus)
-	mux.HandleFunc("GET /api/sync-history", h.handleSyncHistory)
-	mux.HandleFunc("POST /api/sync", h.handleSync)
-	mux.HandleFunc("POST /api/config", h.handleSetConfig)
-	mux.HandleFunc("GET /api/config/{key}", h.handleGetConfig)
+	// One Monarch account serves the household: every route needs the
+	// identity core vouches for, choosing the credential it syncs from is
+	// an admin's, and sync serves core's cron and a user's refresh.
+	user := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, client.AuthMiddleware(handler))
+	}
+	user("GET /api/accounts", h.handleListAccounts)
+	user("GET /api/transactions", h.handleListTransactions)
+	user("GET /api/categories", h.handleListCategories)
+	user("GET /api/budgets", h.handleListBudgets)
+	user("GET /api/recurring", h.handleListRecurring)
+	user("GET /api/investments", h.handleListInvestments)
+	user("GET /api/investment-performance", h.handleInvestmentPerformance)
+	user("GET /api/credit", h.handleListCreditScores)
+	user("GET /api/snapshots", h.handleListSnapshots)
+	user("GET /api/snapshots/breakdown", h.handleAssetLiabilitySnapshots)
+	user("GET /api/net-worth", h.handleNetWorth)
+	user("GET /api/cashflow", h.handleCashflow)
+	user("GET /api/reports/cashflow", h.handleCashflowReport)
+	user("GET /api/reports/fire", h.handleFIRE)
+	user("GET /api/search", h.handleSearch)
+	user("GET /api/sync-status", h.handleSyncStatus)
+	user("GET /api/sync-history", h.handleSyncHistory)
+	syncAsUser := client.AuthMiddleware(client.RequireScopeFunc(client.ScopeWrite, h.handleSync))
+	mux.HandleFunc("POST /api/sync", func(w http.ResponseWriter, r *http.Request) {
+		if client.IsSystemRequest(r) {
+			h.handleSync(w, r)
+			return
+		}
+		syncAsUser.ServeHTTP(w, r)
+	})
+	user("POST /api/config", client.RequireScopeFunc(client.ScopeAdmin, h.handleSetConfig))
+	user("GET /api/config/{key}", h.handleGetConfig)
 }
