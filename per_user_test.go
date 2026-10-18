@@ -59,6 +59,9 @@ type standInCore struct {
 	// secretReads lists "user:credential" for every secrets read, the user
 	// being whoever the request's identity token names.
 	secretReads []string
+	// forUser lists "user:permission" for every token core minted for the
+	// app's background work.
+	forUser []string
 }
 
 func newStandInCore(t *testing.T, owners map[string]string, users ...string) *standInCore {
@@ -76,6 +79,28 @@ func newStandInCore(t *testing.T, owners map[string]string, users ...string) *st
 		json.NewEncoder(w).Encode(struct {
 			Users []client.UserSummary `json:"users"`
 		}{c.users})
+	})
+	// Core mints a user's token only for its own system token, capped at
+	// write; the app cannot sign one itself.
+	mux.HandleFunc("POST /api/auth/identity/for-user", func(w http.ResponseWriter, r *http.Request) {
+		if client.TokenFromRequest(r) != testAPIToken {
+			http.Error(w, "only core's system token may mint a token for another user", http.StatusForbidden)
+			return
+		}
+		var req struct {
+			UserID     string `json:"user_id"`
+			Permission string `json:"permission"`
+			TTLSeconds int    `json:"ttl_seconds"`
+		}
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.Permission == "admin" || req.TTLSeconds > 900 {
+			http.Error(w, "permission must be read or write, ttl at most 15 minutes", http.StatusBadRequest)
+			return
+		}
+		c.mu.Lock()
+		c.forUser = append(c.forUser, req.UserID+":"+req.Permission)
+		c.mu.Unlock()
+		json.NewEncoder(w).Encode(map[string]any{"token": signer.Token(client.TokenInfo{UserID: req.UserID, Email: req.UserID + "@test.local", Permission: req.Permission})})
 	})
 	mux.HandleFunc("GET /apps/vault/api/credentials/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -126,6 +151,14 @@ func (c *standInCore) reads() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out := slices.Clone(c.secretReads)
+	slices.Sort(out)
+	return out
+}
+
+func (c *standInCore) mintedForUsers() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := slices.Clone(c.forUser)
 	slices.Sort(out)
 	return out
 }
@@ -240,6 +273,9 @@ func TestMoney_ScheduledSyncRunsForEachConfiguredUser(t *testing.T) {
 
 	if got, wantReads := core.reads(), []string{"alice:cred-a", "bob:cred-b"}; !slices.Equal(got, wantReads) {
 		t.Fatalf("the scheduled sync read %v from the vault, want each user's own credential as that user: %v", got, wantReads)
+	}
+	if got, wantMinted := core.mintedForUsers(), []string{"alice:read", "bob:read"}; !slices.Equal(got, wantMinted) {
+		t.Fatalf("core minted %v for the sync, want a read token per configured user: %v", got, wantMinted)
 	}
 	history := func(token string) []SyncLogEntry {
 		var resp struct {

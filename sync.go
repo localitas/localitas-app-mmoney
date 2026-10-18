@@ -2,9 +2,6 @@ package mmoney
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,28 +34,23 @@ type monarchSession struct {
 	expires time.Time
 }
 
-// identityKeyDomain is the domain core derives the identity-token signing
-// key under from the cluster API token.
-const identityKeyDomain = "localitas-internal-token-v1"
+// identityTTL is how long the token the app acts for a user with lives:
+// one credential read.
+const identityTTL = 2 * time.Minute
 
-// identityToken is a token core accepts as user: the identity core would put
-// on a request from them, capped at read. The vault serves a credential's
-// secrets only to the users it is shared with, so a sync reads each user's
-// credential as that user, not as the app.
-func (a *App) identityToken(user client.TokenInfo) (string, error) {
+// identityToken asks core, with the app's system token, for a short-lived
+// read token for user. The vault serves a credential's secrets only to the
+// users it is shared with, so a sync reads each user's credential as that
+// user, not as the app; the app cannot sign such a token itself.
+func (a *App) identityToken(ctx context.Context, user client.TokenInfo) (string, error) {
 	if a.token == "" {
-		return "", errors.New("no API token to sign the user's identity with")
+		return "", errors.New("no API token to ask core for the user's identity with")
 	}
-	user.Permission = string(client.ScopeRead)
-	claims, err := json.Marshal(user)
+	token, err := a.client.WithHTTPClient(a.httpClient).WithToken(a.token).IdentityForUser(ctx, user.UserID, client.ScopeRead, identityTTL)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("identity for %s: %w", user.UserID, err)
 	}
-	sum := sha256.Sum256([]byte(identityKeyDomain + ":" + a.token))
-	mac := hmac.New(sha256.New, []byte(base64.StdEncoding.EncodeToString(sum[:])))
-	payload := base64.RawURLEncoding.EncodeToString(claims)
-	mac.Write([]byte(payload))
-	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+	return token, nil
 }
 
 func (a *App) resolveVaultCredential(ctx context.Context, user client.TokenInfo) (*VaultCredential, error) {
@@ -69,7 +61,7 @@ func (a *App) resolveVaultCredential(ctx context.Context, user client.TokenInfo)
 	if credID == "" {
 		return nil, ErrNotConfigured
 	}
-	token, err := a.identityToken(user)
+	token, err := a.identityToken(ctx, user)
 	if err != nil {
 		return nil, err
 	}
