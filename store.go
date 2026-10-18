@@ -30,17 +30,22 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) UpsertAccount(ctx context.Context, a LocalAccount) error {
+// Rows synced from Monarch are keyed by Monarch's own ids. An upsert
+// updates only the syncing user's row: when two users sync the same Monarch
+// login, the first to sync a row keeps it and the other's copy is not stored.
+
+func (s *Store) UpsertAccount(ctx context.Context, userID string, a LocalAccount) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts (id, display_name, account_type, account_subtype, display_balance, current_balance, credit_limit, is_hidden, is_asset, is_manual, is_closed, include_in_net_worth, data_provider, icon, logo_url, mask, monarch_created_at, monarch_updated_at, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, account_type=excluded.account_type, account_subtype=excluded.account_subtype, display_balance=excluded.display_balance, current_balance=excluded.current_balance, credit_limit=excluded.credit_limit, is_hidden=excluded.is_hidden, is_asset=excluded.is_asset, is_manual=excluded.is_manual, is_closed=excluded.is_closed, include_in_net_worth=excluded.include_in_net_worth, data_provider=excluded.data_provider, icon=excluded.icon, logo_url=excluded.logo_url, mask=excluded.mask, monarch_created_at=excluded.monarch_created_at, monarch_updated_at=excluded.monarch_updated_at, synced_at=excluded.synced_at`,
-		a.ID, a.DisplayName, a.AccountType, a.AccountSubtype, a.DisplayBalance, a.CurrentBalance, a.CreditLimit, boolToInt(a.IsHidden), boolToInt(a.IsAsset), boolToInt(a.IsManual), boolToInt(a.IsClosed), boolToInt(a.IncludeInNetWorth), a.DataProvider, a.Icon, a.LogoURL, a.Mask, a.MonarchCreatedAt, a.MonarchUpdatedAt, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO accounts (id, user_id, display_name, account_type, account_subtype, display_balance, current_balance, credit_limit, is_hidden, is_asset, is_manual, is_closed, include_in_net_worth, data_provider, icon, logo_url, mask, monarch_created_at, monarch_updated_at, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, account_type=excluded.account_type, account_subtype=excluded.account_subtype, display_balance=excluded.display_balance, current_balance=excluded.current_balance, credit_limit=excluded.credit_limit, is_hidden=excluded.is_hidden, is_asset=excluded.is_asset, is_manual=excluded.is_manual, is_closed=excluded.is_closed, include_in_net_worth=excluded.include_in_net_worth, data_provider=excluded.data_provider, icon=excluded.icon, logo_url=excluded.logo_url, mask=excluded.mask, monarch_created_at=excluded.monarch_created_at, monarch_updated_at=excluded.monarch_updated_at, synced_at=excluded.synced_at
+		WHERE accounts.user_id = excluded.user_id`,
+		a.ID, userID, a.DisplayName, a.AccountType, a.AccountSubtype, a.DisplayBalance, a.CurrentBalance, a.CreditLimit, boolToInt(a.IsHidden), boolToInt(a.IsAsset), boolToInt(a.IsManual), boolToInt(a.IsClosed), boolToInt(a.IncludeInNetWorth), a.DataProvider, a.Icon, a.LogoURL, a.Mask, a.MonarchCreatedAt, a.MonarchUpdatedAt, now)
 	return err
 }
 
-func (s *Store) ListAccounts(ctx context.Context) ([]LocalAccount, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, display_name, account_type, account_subtype, display_balance, current_balance, credit_limit, is_hidden, is_asset, is_manual, is_closed, include_in_net_worth, data_provider, icon, logo_url, mask, monarch_created_at, monarch_updated_at, synced_at FROM accounts ORDER BY display_name`)
+func (s *Store) ListAccounts(ctx context.Context, userID string) ([]LocalAccount, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, display_name, account_type, account_subtype, display_balance, current_balance, credit_limit, is_hidden, is_asset, is_manual, is_closed, include_in_net_worth, data_provider, icon, logo_url, mask, monarch_created_at, monarch_updated_at, synced_at FROM accounts WHERE user_id = ? ORDER BY display_name`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -62,24 +67,25 @@ func (s *Store) ListAccounts(ctx context.Context) ([]LocalAccount, error) {
 	return out, nil
 }
 
-func (s *Store) UpsertTransaction(ctx context.Context, t LocalTransaction) error {
+func (s *Store) UpsertTransaction(ctx context.Context, userID string, t LocalTransaction) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO transactions (id, date, amount, merchant, category, category_id, category_group_name, category_group_type, notes, tags_json, pending, hide_from_reports, plaid_name, is_recurring, review_status, needs_review, is_split_transaction, account_id, monarch_created_at, monarch_updated_at, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET date=excluded.date, amount=excluded.amount, merchant=excluded.merchant, category=excluded.category, category_id=excluded.category_id, category_group_name=excluded.category_group_name, category_group_type=excluded.category_group_type, notes=excluded.notes, tags_json=excluded.tags_json, pending=excluded.pending, hide_from_reports=excluded.hide_from_reports, plaid_name=excluded.plaid_name, is_recurring=excluded.is_recurring, review_status=excluded.review_status, needs_review=excluded.needs_review, is_split_transaction=excluded.is_split_transaction, account_id=excluded.account_id, monarch_created_at=excluded.monarch_created_at, monarch_updated_at=excluded.monarch_updated_at, synced_at=excluded.synced_at`,
-		t.ID, t.Date, t.Amount, t.Merchant, t.Category, t.CategoryID, t.CategoryGroupName, t.CategoryGroupType, t.Notes, t.TagsJSON, boolToInt(t.Pending), boolToInt(t.HideFromReports), t.PlaidName, boolToInt(t.IsRecurring), t.ReviewStatus, boolToInt(t.NeedsReview), boolToInt(t.IsSplitTransaction), t.AccountID, t.MonarchCreatedAt, t.MonarchUpdatedAt, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO transactions (id, user_id, date, amount, merchant, category, category_id, category_group_name, category_group_type, notes, tags_json, pending, hide_from_reports, plaid_name, is_recurring, review_status, needs_review, is_split_transaction, account_id, monarch_created_at, monarch_updated_at, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET date=excluded.date, amount=excluded.amount, merchant=excluded.merchant, category=excluded.category, category_id=excluded.category_id, category_group_name=excluded.category_group_name, category_group_type=excluded.category_group_type, notes=excluded.notes, tags_json=excluded.tags_json, pending=excluded.pending, hide_from_reports=excluded.hide_from_reports, plaid_name=excluded.plaid_name, is_recurring=excluded.is_recurring, review_status=excluded.review_status, needs_review=excluded.needs_review, is_split_transaction=excluded.is_split_transaction, account_id=excluded.account_id, monarch_created_at=excluded.monarch_created_at, monarch_updated_at=excluded.monarch_updated_at, synced_at=excluded.synced_at
+		WHERE transactions.user_id = excluded.user_id`,
+		t.ID, userID, t.Date, t.Amount, t.Merchant, t.Category, t.CategoryID, t.CategoryGroupName, t.CategoryGroupType, t.Notes, t.TagsJSON, boolToInt(t.Pending), boolToInt(t.HideFromReports), t.PlaidName, boolToInt(t.IsRecurring), t.ReviewStatus, boolToInt(t.NeedsReview), boolToInt(t.IsSplitTransaction), t.AccountID, t.MonarchCreatedAt, t.MonarchUpdatedAt, now)
 	return err
 }
 
-func (s *Store) ListTransactions(ctx context.Context, startDate, endDate string, limit, offset int) ([]LocalTransaction, int, error) {
+func (s *Store) ListTransactions(ctx context.Context, userID, startDate, endDate string, limit, offset int) ([]LocalTransaction, int, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	countQuery := `SELECT COUNT(*) FROM transactions WHERE 1=1`
-	query := `SELECT id, date, amount, merchant, category, category_id, category_group_name, category_group_type, notes, tags_json, pending, hide_from_reports, plaid_name, is_recurring, review_status, needs_review, is_split_transaction, account_id, monarch_created_at, monarch_updated_at, synced_at FROM transactions WHERE 1=1`
+	countQuery := `SELECT COUNT(*) FROM transactions WHERE user_id = ?`
+	query := `SELECT id, date, amount, merchant, category, category_id, category_group_name, category_group_type, notes, tags_json, pending, hide_from_reports, plaid_name, is_recurring, review_status, needs_review, is_split_transaction, account_id, monarch_created_at, monarch_updated_at, synced_at FROM transactions WHERE user_id = ?`
 
-	args := make([]interface{}, 0)
+	args := []interface{}{userID}
 	if startDate != "" {
 		countQuery += ` AND date >= ?`
 		query += ` AND date >= ?`
@@ -107,15 +113,15 @@ func (s *Store) ListTransactions(ctx context.Context, startDate, endDate string,
 	return scanTransactions(rows, total)
 }
 
-func (s *Store) SearchTransactions(ctx context.Context, q string, limit int) ([]LocalTransaction, error) {
+func (s *Store) SearchTransactions(ctx context.Context, userID, q string, limit int) ([]LocalTransaction, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.date, t.amount, t.merchant, t.category, t.category_id, t.category_group_name, t.category_group_type, t.notes, t.tags_json, t.pending, t.hide_from_reports, t.plaid_name, t.is_recurring, t.review_status, t.needs_review, t.is_split_transaction, t.account_id, t.monarch_created_at, t.monarch_updated_at, t.synced_at
 		FROM transactions t
 		JOIN transactions_fts ON t.rowid = transactions_fts.rowid
-		WHERE transactions_fts MATCH ?
-		ORDER BY rank LIMIT ?`, q, limit)
+		WHERE transactions_fts MATCH ? AND t.user_id = ?
+		ORDER BY rank LIMIT ?`, q, userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -127,17 +133,18 @@ func (s *Store) SearchTransactions(ctx context.Context, q string, limit int) ([]
 	return txs, nil
 }
 
-func (s *Store) UpsertCategory(ctx context.Context, c LocalCategory) error {
+func (s *Store) UpsertCategory(ctx context.Context, userID string, c LocalCategory) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO categories (id, name, group_name, group_id, group_type, sort_order, icon, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET name=excluded.name, group_name=excluded.group_name, group_id=excluded.group_id, group_type=excluded.group_type, sort_order=excluded.sort_order, icon=excluded.icon, synced_at=excluded.synced_at`,
-		c.ID, c.Name, c.GroupName, c.GroupID, c.GroupType, c.SortOrder, c.Icon, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO categories (id, user_id, name, group_name, group_id, group_type, sort_order, icon, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET name=excluded.name, group_name=excluded.group_name, group_id=excluded.group_id, group_type=excluded.group_type, sort_order=excluded.sort_order, icon=excluded.icon, synced_at=excluded.synced_at
+		WHERE categories.user_id = excluded.user_id`,
+		c.ID, userID, c.Name, c.GroupName, c.GroupID, c.GroupType, c.SortOrder, c.Icon, now)
 	return err
 }
 
-func (s *Store) ListCategories(ctx context.Context) ([]LocalCategory, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, group_name, group_id, group_type, sort_order, icon, synced_at FROM categories ORDER BY group_name, sort_order, name`)
+func (s *Store) ListCategories(ctx context.Context, userID string) ([]LocalCategory, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, group_name, group_id, group_type, sort_order, icon, synced_at FROM categories WHERE user_id = ? ORDER BY group_name, sort_order, name`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -153,20 +160,21 @@ func (s *Store) ListCategories(ctx context.Context) ([]LocalCategory, error) {
 	return out, nil
 }
 
-func (s *Store) UpsertBudget(ctx context.Context, b LocalBudget) error {
+func (s *Store) UpsertBudget(ctx context.Context, userID string, b LocalBudget) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO budgets (id, category_id, category_name, month, planned, actual, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(category_id, month) DO UPDATE SET category_name=excluded.category_name, planned=excluded.planned, actual=excluded.actual, synced_at=excluded.synced_at`,
-		b.ID, b.CategoryID, b.CategoryName, b.Month, b.Planned, b.Actual, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO budgets (id, user_id, category_id, category_name, month, planned, actual, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET category_name=excluded.category_name, planned=excluded.planned, actual=excluded.actual, synced_at=excluded.synced_at
+		WHERE budgets.user_id = excluded.user_id`,
+		b.ID, userID, b.CategoryID, b.CategoryName, b.Month, b.Planned, b.Actual, now)
 	return err
 }
 
-func (s *Store) ListBudgets(ctx context.Context, month string) ([]LocalBudget, error) {
-	query := `SELECT id, category_id, category_name, month, planned, actual, synced_at FROM budgets`
-	args := make([]interface{}, 0)
+func (s *Store) ListBudgets(ctx context.Context, userID, month string) ([]LocalBudget, error) {
+	query := `SELECT id, category_id, category_name, month, planned, actual, synced_at FROM budgets WHERE user_id = ?`
+	args := []interface{}{userID}
 	if month != "" {
-		query += ` WHERE month = ?`
+		query += ` AND month = ?`
 		args = append(args, month)
 	}
 	query += ` ORDER BY category_name`
@@ -187,17 +195,18 @@ func (s *Store) ListBudgets(ctx context.Context, month string) ([]LocalBudget, e
 	return out, nil
 }
 
-func (s *Store) UpsertRecurring(ctx context.Context, r LocalRecurring) error {
+func (s *Store) UpsertRecurring(ctx context.Context, userID string, r LocalRecurring) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO recurring_transactions (id, merchant, amount, frequency, next_date, category_name, account_id, account_name, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET merchant=excluded.merchant, amount=excluded.amount, frequency=excluded.frequency, next_date=excluded.next_date, category_name=excluded.category_name, account_id=excluded.account_id, account_name=excluded.account_name, synced_at=excluded.synced_at`,
-		r.ID, r.Merchant, r.Amount, r.Frequency, r.NextDate, r.CategoryName, r.AccountID, r.AccountName, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO recurring_transactions (id, user_id, merchant, amount, frequency, next_date, category_name, account_id, account_name, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET merchant=excluded.merchant, amount=excluded.amount, frequency=excluded.frequency, next_date=excluded.next_date, category_name=excluded.category_name, account_id=excluded.account_id, account_name=excluded.account_name, synced_at=excluded.synced_at
+		WHERE recurring_transactions.user_id = excluded.user_id`,
+		r.ID, userID, r.Merchant, r.Amount, r.Frequency, r.NextDate, r.CategoryName, r.AccountID, r.AccountName, now)
 	return err
 }
 
-func (s *Store) ListRecurring(ctx context.Context) ([]LocalRecurring, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, merchant, amount, frequency, next_date, category_name, account_id, account_name, synced_at FROM recurring_transactions ORDER BY next_date`)
+func (s *Store) ListRecurring(ctx context.Context, userID string) ([]LocalRecurring, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, merchant, amount, frequency, next_date, category_name, account_id, account_name, synced_at FROM recurring_transactions WHERE user_id = ? ORDER BY next_date`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -213,17 +222,18 @@ func (s *Store) ListRecurring(ctx context.Context) ([]LocalRecurring, error) {
 	return out, nil
 }
 
-func (s *Store) UpsertInvestment(ctx context.Context, inv LocalInvestment) error {
+func (s *Store) UpsertInvestment(ctx context.Context, userID string, inv LocalInvestment) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO investments (id, security_id, ticker, name, quantity, basis, total_value, price, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET security_id=excluded.security_id, ticker=excluded.ticker, name=excluded.name, quantity=excluded.quantity, basis=excluded.basis, total_value=excluded.total_value, price=excluded.price, synced_at=excluded.synced_at`,
-		inv.ID, inv.SecurityID, inv.Ticker, inv.Name, inv.Quantity, inv.Basis, inv.TotalValue, inv.Price, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO investments (id, user_id, security_id, ticker, name, quantity, basis, total_value, price, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET security_id=excluded.security_id, ticker=excluded.ticker, name=excluded.name, quantity=excluded.quantity, basis=excluded.basis, total_value=excluded.total_value, price=excluded.price, synced_at=excluded.synced_at
+		WHERE investments.user_id = excluded.user_id`,
+		inv.ID, userID, inv.SecurityID, inv.Ticker, inv.Name, inv.Quantity, inv.Basis, inv.TotalValue, inv.Price, now)
 	return err
 }
 
-func (s *Store) ListInvestments(ctx context.Context) ([]LocalInvestment, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, security_id, ticker, name, quantity, basis, total_value, price, synced_at FROM investments ORDER BY total_value DESC`)
+func (s *Store) ListInvestments(ctx context.Context, userID string) ([]LocalInvestment, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, security_id, ticker, name, quantity, basis, total_value, price, synced_at FROM investments WHERE user_id = ? ORDER BY total_value DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,26 +249,26 @@ func (s *Store) ListInvestments(ctx context.Context) ([]LocalInvestment, error) 
 	return out, nil
 }
 
-func (s *Store) UpsertInvestmentPerformance(ctx context.Context, p LocalInvestmentPerformance) error {
+func (s *Store) UpsertInvestmentPerformance(ctx context.Context, userID string, p LocalInvestmentPerformance) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO investment_performance (security_id, ticker, name, date, return_percent, value, synced_at)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO investment_performance (user_id, security_id, ticker, name, date, return_percent, value, synced_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_id, security_id, date) DO UPDATE SET ticker=excluded.ticker, name=excluded.name, return_percent=excluded.return_percent, value=excluded.value, synced_at=excluded.synced_at`,
+		userID, p.SecurityID, p.Ticker, p.Name, p.Date, p.ReturnPercent, p.Value, now)
+	return err
+}
+
+func (s *Store) UpsertAssetLiabilitySnapshot(ctx context.Context, userID string, snap AssetLiabilitySnapshot) error {
+	now := time.Now().UTC().Unix()
+	_, err := s.db.ExecContext(ctx, `INSERT INTO asset_liability_snapshots (user_id, month, assets, liabilities, net_worth, investments, synced_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(security_id, date) DO UPDATE SET ticker=excluded.ticker, name=excluded.name, return_percent=excluded.return_percent, value=excluded.value, synced_at=excluded.synced_at`,
-		p.SecurityID, p.Ticker, p.Name, p.Date, p.ReturnPercent, p.Value, now)
+		ON CONFLICT(user_id, month) DO UPDATE SET assets=excluded.assets, liabilities=excluded.liabilities, net_worth=excluded.net_worth, investments=excluded.investments, synced_at=excluded.synced_at`,
+		userID, snap.Month, snap.Assets, snap.Liabilities, snap.NetWorth, snap.Investments, now)
 	return err
 }
 
-func (s *Store) UpsertAssetLiabilitySnapshot(ctx context.Context, snap AssetLiabilitySnapshot) error {
-	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO asset_liability_snapshots (month, assets, liabilities, net_worth, investments, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?)
-		ON CONFLICT(month) DO UPDATE SET assets=excluded.assets, liabilities=excluded.liabilities, net_worth=excluded.net_worth, investments=excluded.investments, synced_at=excluded.synced_at`,
-		snap.Month, snap.Assets, snap.Liabilities, snap.NetWorth, snap.Investments, now)
-	return err
-}
-
-func (s *Store) ListAssetLiabilitySnapshots(ctx context.Context) ([]AssetLiabilitySnapshot, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT month, assets, liabilities, net_worth, investments FROM asset_liability_snapshots ORDER BY month`)
+func (s *Store) ListAssetLiabilitySnapshots(ctx context.Context, userID string) ([]AssetLiabilitySnapshot, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT month, assets, liabilities, net_worth, investments FROM asset_liability_snapshots WHERE user_id = ? ORDER BY month`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -274,9 +284,9 @@ func (s *Store) ListAssetLiabilitySnapshots(ctx context.Context) ([]AssetLiabili
 	return out, nil
 }
 
-func (s *Store) ListInvestmentPerformance(ctx context.Context, securityID, startDate, endDate string) ([]LocalInvestmentPerformance, error) {
-	query := `SELECT security_id, ticker, name, date, return_percent, value FROM investment_performance WHERE security_id = ?`
-	args := []interface{}{securityID}
+func (s *Store) ListInvestmentPerformance(ctx context.Context, userID, securityID, startDate, endDate string) ([]LocalInvestmentPerformance, error) {
+	query := `SELECT security_id, ticker, name, date, return_percent, value FROM investment_performance WHERE user_id = ? AND security_id = ?`
+	args := []interface{}{userID, securityID}
 	if startDate != "" {
 		query += ` AND date >= ?`
 		args = append(args, startDate)
@@ -303,8 +313,8 @@ func (s *Store) ListInvestmentPerformance(ctx context.Context, securityID, start
 	return out, nil
 }
 
-func (s *Store) GetSecurityIDs(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT security_id FROM investments WHERE security_id != '' ORDER BY total_value DESC`)
+func (s *Store) GetSecurityIDs(ctx context.Context, userID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT security_id FROM investments WHERE user_id = ? AND security_id != '' ORDER BY total_value DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -320,18 +330,18 @@ func (s *Store) GetSecurityIDs(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (s *Store) UpsertSnapshot(ctx context.Context, snap LocalSnapshot) error {
+func (s *Store) UpsertSnapshot(ctx context.Context, userID string, snap LocalSnapshot) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO account_snapshots (date, balance, synced_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(date) DO UPDATE SET balance=excluded.balance, synced_at=excluded.synced_at`,
-		snap.Date, snap.Balance, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO account_snapshots (user_id, date, balance, synced_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET balance=excluded.balance, synced_at=excluded.synced_at`,
+		userID, snap.Date, snap.Balance, now)
 	return err
 }
 
-func (s *Store) ListSnapshots(ctx context.Context, startDate, endDate string) ([]LocalSnapshot, error) {
-	query := `SELECT date, balance FROM account_snapshots WHERE 1=1`
-	args := make([]interface{}, 0)
+func (s *Store) ListSnapshots(ctx context.Context, userID, startDate, endDate string) ([]LocalSnapshot, error) {
+	query := `SELECT date, balance FROM account_snapshots WHERE user_id = ?`
+	args := []interface{}{userID}
 	if startDate != "" {
 		query += ` AND date >= ?`
 		args = append(args, startDate)
@@ -358,17 +368,17 @@ func (s *Store) ListSnapshots(ctx context.Context, startDate, endDate string) ([
 	return out, nil
 }
 
-func (s *Store) UpsertCreditScore(ctx context.Context, cs LocalCreditScore) error {
+func (s *Store) UpsertCreditScore(ctx context.Context, userID string, cs LocalCreditScore) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO credit_scores (date, score, synced_at)
-		VALUES (?, ?, ?)
-		ON CONFLICT(date) DO UPDATE SET score=excluded.score, synced_at=excluded.synced_at`,
-		cs.Date, cs.Score, now)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO credit_scores (user_id, date, score, synced_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(user_id, date) DO UPDATE SET score=excluded.score, synced_at=excluded.synced_at`,
+		userID, cs.Date, cs.Score, now)
 	return err
 }
 
-func (s *Store) ListCreditScores(ctx context.Context) ([]LocalCreditScore, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT date, score FROM credit_scores ORDER BY date`)
+func (s *Store) ListCreditScores(ctx context.Context, userID string) ([]LocalCreditScore, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT date, score FROM credit_scores WHERE user_id = ? ORDER BY date`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -384,33 +394,33 @@ func (s *Store) ListCreditScores(ctx context.Context) ([]LocalCreditScore, error
 	return out, nil
 }
 
-func (s *Store) GetFIREReport(ctx context.Context) (*FIREReport, error) {
+func (s *Store) GetFIREReport(ctx context.Context, userID string) (*FIREReport, error) {
 	now := time.Now().UTC()
 	oneYearAgo := now.AddDate(-1, 0, 0).Format("2006-01-02")
 	twoYearsAgo := now.AddDate(-2, 0, 0).Format("2006-01-02")
 
-	expenseFilter := `amount < 0 AND hide_from_reports = 0 AND category_group_type != 'transfer'`
+	expenseFilter := `user_id = ? AND amount < 0 AND hide_from_reports = 0 AND category_group_type != 'transfer'`
 
 	var annualExpenses float64
-	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE `+expenseFilter+` AND date >= ?`, oneYearAgo).Scan(&annualExpenses)
+	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE `+expenseFilter+` AND date >= ?`, userID, oneYearAgo).Scan(&annualExpenses)
 
 	var prevYearExpenses float64
-	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE `+expenseFilter+` AND date >= ? AND date < ?`, twoYearsAgo, oneYearAgo).Scan(&prevYearExpenses)
+	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(ABS(amount)), 0) FROM transactions WHERE `+expenseFilter+` AND date >= ? AND date < ?`, userID, twoYearsAgo, oneYearAgo).Scan(&prevYearExpenses)
 
 	var currentMonths, prevMonths int
-	s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT substr(date, 1, 7)) FROM transactions WHERE `+expenseFilter+` AND date >= ?`, oneYearAgo).Scan(&currentMonths)
-	s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT substr(date, 1, 7)) FROM transactions WHERE `+expenseFilter+` AND date >= ? AND date < ?`, twoYearsAgo, oneYearAgo).Scan(&prevMonths)
+	s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT substr(date, 1, 7)) FROM transactions WHERE `+expenseFilter+` AND date >= ?`, userID, oneYearAgo).Scan(&currentMonths)
+	s.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT substr(date, 1, 7)) FROM transactions WHERE `+expenseFilter+` AND date >= ? AND date < ?`, userID, twoYearsAgo, oneYearAgo).Scan(&prevMonths)
 
 	var investmentValue float64
-	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(display_balance), 0) FROM accounts WHERE account_type = 'brokerage'`).Scan(&investmentValue)
+	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(display_balance), 0) FROM accounts WHERE user_id = ? AND account_type = 'brokerage'`, userID).Scan(&investmentValue)
 
 	var annualIncome float64
-	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE amount >= 0 AND hide_from_reports = 0 AND category_group_type != 'transfer' AND date >= ?`, oneYearAgo).Scan(&annualIncome)
+	s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = ? AND amount >= 0 AND hide_from_reports = 0 AND category_group_type != 'transfer' AND date >= ?`, userID, oneYearAgo).Scan(&annualIncome)
 
 	var investOneYearAgo float64
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(balance, 0) FROM account_snapshots WHERE date <= ? ORDER BY date DESC LIMIT 1`, oneYearAgo).Scan(&investOneYearAgo)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(balance, 0) FROM account_snapshots WHERE user_id = ? AND date <= ? ORDER BY date DESC LIMIT 1`, userID, oneYearAgo).Scan(&investOneYearAgo)
 	if err != nil || investOneYearAgo == 0 {
-		s.db.QueryRowContext(ctx, `SELECT COALESCE(balance, 0) FROM account_snapshots ORDER BY date ASC LIMIT 1`).Scan(&investOneYearAgo)
+		s.db.QueryRowContext(ctx, `SELECT COALESCE(balance, 0) FROM account_snapshots WHERE user_id = ? ORDER BY date ASC LIMIT 1`, userID).Scan(&investOneYearAgo)
 	}
 
 	investmentGrowthYoY := 0.0
@@ -459,7 +469,7 @@ func (s *Store) GetFIREReport(ctx context.Context) (*FIREReport, error) {
 	twoYearsAgoDate := now.AddDate(-2, 0, 0).Format("2006-01-02")
 	expRows, err := s.db.QueryContext(ctx, `SELECT substr(date, 1, 7) as month, SUM(ABS(amount)) as total
 		FROM transactions WHERE `+expenseFilter+` AND date >= ?
-		GROUP BY month ORDER BY month`, twoYearsAgoDate)
+		GROUP BY month ORDER BY month`, userID, twoYearsAgoDate)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +484,7 @@ func (s *Store) GetFIREReport(ctx context.Context) (*FIREReport, error) {
 	}
 
 	invRows, err := s.db.QueryContext(ctx, `SELECT month, investments FROM asset_liability_snapshots
-		WHERE month >= ? AND investments > 0 ORDER BY month`, twoYearsAgoDate[:7])
+		WHERE user_id = ? AND month >= ? AND investments > 0 ORDER BY month`, userID, twoYearsAgoDate[:7])
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +513,7 @@ func (s *Store) GetFIREReport(ctx context.Context) (*FIREReport, error) {
 	}, nil
 }
 
-func (s *Store) GetCashflowReport(ctx context.Context, startDate, endDate string, recurringOnly bool) (*CashflowReport, error) {
+func (s *Store) GetCashflowReport(ctx context.Context, userID, startDate, endDate string, recurringOnly bool) (*CashflowReport, error) {
 	recurringFilter := ""
 	if recurringOnly {
 		recurringFilter = " AND is_recurring = 1"
@@ -513,8 +523,8 @@ func (s *Store) GetCashflowReport(ctx context.Context, startDate, endDate string
 		SUM(CASE WHEN amount >= 0 THEN amount ELSE 0 END) as income,
 		SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) as expense
 		FROM transactions
-		WHERE hide_from_reports = 0 AND date >= ? AND date <= ?`+recurringFilter+`
-		GROUP BY month ORDER BY month`, startDate, endDate)
+		WHERE user_id = ? AND hide_from_reports = 0 AND date >= ? AND date <= ?`+recurringFilter+`
+		GROUP BY month ORDER BY month`, userID, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
@@ -534,8 +544,8 @@ func (s *Store) GetCashflowReport(ctx context.Context, startDate, endDate string
 
 	incomeRows, err := s.db.QueryContext(ctx, `SELECT category, SUM(amount) as total
 		FROM transactions
-		WHERE hide_from_reports = 0 AND amount >= 0 AND date >= ? AND date <= ?`+recurringFilter+`
-		GROUP BY category ORDER BY total DESC`, startDate, endDate)
+		WHERE user_id = ? AND hide_from_reports = 0 AND amount >= 0 AND date >= ? AND date <= ?`+recurringFilter+`
+		GROUP BY category ORDER BY total DESC`, userID, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
@@ -553,8 +563,8 @@ func (s *Store) GetCashflowReport(ctx context.Context, startDate, endDate string
 
 	expenseRows, err := s.db.QueryContext(ctx, `SELECT category, SUM(amount) as total
 		FROM transactions
-		WHERE hide_from_reports = 0 AND amount < 0 AND date >= ? AND date <= ?`+recurringFilter+`
-		GROUP BY category ORDER BY total ASC`, startDate, endDate)
+		WHERE user_id = ? AND hide_from_reports = 0 AND amount < 0 AND date >= ? AND date <= ?`+recurringFilter+`
+		GROUP BY category ORDER BY total ASC`, userID, startDate, endDate)
 	if err != nil {
 		return nil, err
 	}
@@ -587,18 +597,18 @@ func (s *Store) GetCashflowReport(ctx context.Context, startDate, endDate string
 	}, nil
 }
 
-func (s *Store) LogSync(ctx context.Context, startedAt int64, status, errMsg string, accounts, transactions int) error {
+func (s *Store) LogSync(ctx context.Context, userID string, startedAt int64, status, errMsg string, accounts, transactions int) error {
 	now := time.Now().UTC().Unix()
-	_, err := s.db.ExecContext(ctx, `INSERT INTO sync_log (started_at, completed_at, status, error_message, accounts_synced, transactions_synced) VALUES (?, ?, ?, ?, ?, ?)`,
-		startedAt, now, status, errMsg, accounts, transactions)
+	_, err := s.db.ExecContext(ctx, `INSERT INTO sync_log (user_id, started_at, completed_at, status, error_message, accounts_synced, transactions_synced) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		userID, startedAt, now, status, errMsg, accounts, transactions)
 	return err
 }
 
-func (s *Store) GetLastSync(ctx context.Context) (*SyncStatus, error) {
+func (s *Store) GetLastSync(ctx context.Context, userID string) (*SyncStatus, error) {
 	var startedAt, completedAt int64
 	var status, errMsg string
 	var accounts, transactions int
-	err := s.db.QueryRowContext(ctx, `SELECT started_at, completed_at, status, error_message, accounts_synced, transactions_synced FROM sync_log ORDER BY id DESC LIMIT 1`).Scan(&startedAt, &completedAt, &status, &errMsg, &accounts, &transactions)
+	err := s.db.QueryRowContext(ctx, `SELECT started_at, completed_at, status, error_message, accounts_synced, transactions_synced FROM sync_log WHERE user_id = ? ORDER BY id DESC LIMIT 1`, userID).Scan(&startedAt, &completedAt, &status, &errMsg, &accounts, &transactions)
 	if err == sql.ErrNoRows {
 		return &SyncStatus{Status: "never"}, nil
 	}
@@ -615,11 +625,11 @@ func (s *Store) GetLastSync(ctx context.Context) (*SyncStatus, error) {
 	}, nil
 }
 
-func (s *Store) ListSyncHistory(ctx context.Context, limit int) ([]SyncLogEntry, error) {
+func (s *Store) ListSyncHistory(ctx context.Context, userID string, limit int) ([]SyncLogEntry, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, started_at, completed_at, status, error_message, accounts_synced, transactions_synced FROM sync_log ORDER BY id DESC LIMIT ?`, limit)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, started_at, completed_at, status, error_message, accounts_synced, transactions_synced FROM sync_log WHERE user_id = ? ORDER BY id DESC LIMIT ?`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -644,18 +654,60 @@ func (s *Store) PruneOldSyncLogs(ctx context.Context, olderThanDays int) error {
 	return err
 }
 
-func (s *Store) GetConfig(ctx context.Context, key string) (string, error) {
+func (s *Store) GetConfig(ctx context.Context, userID, key string) (string, error) {
 	var value string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM config WHERE key = ?`, key).Scan(&value)
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM user_config WHERE user_id = ? AND key = ?`, userID, key).Scan(&value)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
 	return value, err
 }
 
-func (s *Store) SetConfig(ctx context.Context, key, value string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, key, value)
+func (s *Store) SetConfig(ctx context.Context, userID, key, value string) error {
+	_, err := s.db.ExecContext(ctx, `INSERT INTO user_config (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value`, userID, key, value)
 	return err
+}
+
+// ConfiguredUsers lists the users who picked a credential to sync from.
+func (s *Store) ConfiguredUsers(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT user_id FROM user_config WHERE key = 'vault_credential_id' AND value != '' AND user_id != '' ORDER BY user_id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// ownedTables are the tables whose rows belong to a user.
+var ownedTables = []string{"accounts", "transactions", "categories", "budgets", "recurring_transactions", "investments", "account_snapshots", "credit_scores", "sync_log", "investment_performance", "asset_liability_snapshots", "user_config"}
+
+// ClaimLegacyData gives userID the rows and settings synced before
+// per-user ownership, which the migration left under user ”. Where userID
+// already has the same row, theirs is kept. Running it again finds nothing
+// to claim.
+func (s *Store) ClaimLegacyData(ctx context.Context, userID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, table := range ownedTables {
+		if _, err := tx.ExecContext(ctx, `UPDATE OR IGNORE `+table+` SET user_id = ? WHERE user_id = ''`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE user_id = ''`); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func scanTransactions(rows *sql.Rows, total int) ([]LocalTransaction, int, error) {

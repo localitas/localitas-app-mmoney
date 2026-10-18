@@ -198,13 +198,13 @@ var MMoneyAPIDoc = APIDoc{
 		{
 			Method:      "POST",
 			Path:        "/api/config",
-			Summary:     "Set a configuration value (e.g. vault_credential_id)",
+			Summary:     "Pick your vault credential (vault_credential_id); it must be one the vault shares with you",
 			RequestBody: &APIBody{ContentType: "application/json", Example: `{"key":"vault_credential_id","value":"abc-123"}`},
 		},
 		{
 			Method:  "GET",
 			Path:    "/api/config/{key}",
-			Summary: "Get a configuration value",
+			Summary: "Get one of your configuration values",
 		},
 	},
 }

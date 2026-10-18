@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	client "github.com/localitas/localitas-go"
 	"github.com/localitas/localitas-go/httputil"
 )
 
@@ -16,7 +17,7 @@ type handler struct {
 }
 
 func (h *handler) handleListAccounts(w http.ResponseWriter, r *http.Request) {
-	accounts, err := h.app.Store.ListAccounts(r.Context())
+	accounts, err := h.app.Store.ListAccounts(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list accounts: %v", err)
 		return
@@ -43,7 +44,7 @@ func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	txs, total, err := h.app.Store.ListTransactions(r.Context(), startDate, endDate, limit, offset)
+	txs, total, err := h.app.Store.ListTransactions(r.Context(), client.GetUserID(r.Context()), startDate, endDate, limit, offset)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list transactions: %v", err)
 		return
@@ -57,7 +58,7 @@ func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request)
 }
 
 func (h *handler) handleListCategories(w http.ResponseWriter, r *http.Request) {
-	cats, err := h.app.Store.ListCategories(r.Context())
+	cats, err := h.app.Store.ListCategories(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list categories: %v", err)
 		return
@@ -67,7 +68,7 @@ func (h *handler) handleListCategories(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 	month := r.URL.Query().Get("month")
-	budgets, err := h.app.Store.ListBudgets(r.Context(), month)
+	budgets, err := h.app.Store.ListBudgets(r.Context(), client.GetUserID(r.Context()), month)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list budgets: %v", err)
 		return
@@ -76,7 +77,7 @@ func (h *handler) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleListRecurring(w http.ResponseWriter, r *http.Request) {
-	recurring, err := h.app.Store.ListRecurring(r.Context())
+	recurring, err := h.app.Store.ListRecurring(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list recurring: %v", err)
 		return
@@ -85,7 +86,7 @@ func (h *handler) handleListRecurring(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleListInvestments(w http.ResponseWriter, r *http.Request) {
-	investments, err := h.app.Store.ListInvestments(r.Context())
+	investments, err := h.app.Store.ListInvestments(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list investments: %v", err)
 		return
@@ -94,7 +95,7 @@ func (h *handler) handleListInvestments(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) handleListCreditScores(w http.ResponseWriter, r *http.Request) {
-	scores, err := h.app.Store.ListCreditScores(r.Context())
+	scores, err := h.app.Store.ListCreditScores(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list credit scores: %v", err)
 		return
@@ -111,7 +112,7 @@ func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Req
 	startDate := r.URL.Query().Get("start")
 	endDate := r.URL.Query().Get("end")
 
-	perf, err := h.app.Store.ListInvestmentPerformance(r.Context(), securityID, startDate, endDate)
+	perf, err := h.app.Store.ListInvestmentPerformance(r.Context(), client.GetUserID(r.Context()), securityID, startDate, endDate)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get investment performance: %v", err)
 		return
@@ -120,7 +121,7 @@ func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Req
 }
 
 func (h *handler) handleAssetLiabilitySnapshots(w http.ResponseWriter, r *http.Request) {
-	snapshots, err := h.app.Store.ListAssetLiabilitySnapshots(r.Context())
+	snapshots, err := h.app.Store.ListAssetLiabilitySnapshots(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get snapshots: %v", err)
 		return
@@ -131,7 +132,7 @@ func (h *handler) handleAssetLiabilitySnapshots(w http.ResponseWriter, r *http.R
 func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start")
 	endDate := r.URL.Query().Get("end")
-	snapshots, err := h.app.Store.ListSnapshots(r.Context(), startDate, endDate)
+	snapshots, err := h.app.Store.ListSnapshots(r.Context(), client.GetUserID(r.Context()), startDate, endDate)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list snapshots: %v", err)
 		return
@@ -142,14 +143,14 @@ func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 func (h *handler) handleNetWorth(w http.ResponseWriter, r *http.Request) {
 	startDate := r.URL.Query().Get("start")
 	endDate := r.URL.Query().Get("end")
-	snapshots, err := h.app.Store.ListSnapshots(r.Context(), startDate, endDate)
+	snapshots, err := h.app.Store.ListSnapshots(r.Context(), client.GetUserID(r.Context()), startDate, endDate)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get net worth: %v", err)
 		return
 	}
 	points := make([]NetWorthPoint, len(snapshots))
 	for i, s := range snapshots {
-		points[i] = NetWorthPoint{Date: s.Date, Balance: s.Balance}
+		points[i] = NetWorthPoint(s)
 	}
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"net_worth": points})
 }
@@ -164,7 +165,7 @@ func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
 		endDate = time.Now().UTC().Format("2006-01-02")
 	}
 
-	txs, _, err := h.app.Store.ListTransactions(r.Context(), startDate, endDate, 10000, 0)
+	txs, _, err := h.app.Store.ListTransactions(r.Context(), client.GetUserID(r.Context()), startDate, endDate, 10000, 0)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to compute cashflow: %v", err)
 		return
@@ -200,7 +201,7 @@ func (h *handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "q parameter required")
 		return
 	}
-	txs, err := h.app.Store.SearchTransactions(r.Context(), q, 50)
+	txs, err := h.app.Store.SearchTransactions(r.Context(), client.GetUserID(r.Context()), q, 50)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "search failed: %v", err)
 		return
@@ -209,7 +210,7 @@ func (h *handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleFIRE(w http.ResponseWriter, r *http.Request) {
-	report, err := h.app.Store.GetFIREReport(r.Context())
+	report, err := h.app.Store.GetFIREReport(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get FIRE report: %v", err)
 		return
@@ -227,7 +228,7 @@ func (h *handler) handleCashflowReport(w http.ResponseWriter, r *http.Request) {
 		endDate = time.Now().UTC().Format("2006-01-02")
 	}
 	recurringOnly := r.URL.Query().Get("recurring") == "1"
-	report, err := h.app.Store.GetCashflowReport(r.Context(), startDate, endDate, recurringOnly)
+	report, err := h.app.Store.GetCashflowReport(r.Context(), client.GetUserID(r.Context()), startDate, endDate, recurringOnly)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get cashflow report: %v", err)
 		return
@@ -236,7 +237,7 @@ func (h *handler) handleCashflowReport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
-	status, err := h.app.Store.GetLastSync(r.Context())
+	status, err := h.app.Store.GetLastSync(r.Context(), client.GetUserID(r.Context()))
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get sync status: %v", err)
 		return
@@ -244,24 +245,10 @@ func (h *handler) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, status)
 }
 
+// handleSync syncs the requesting user's own Monarch login.
 func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
-	// The scheduled sync of an app nobody has set up is skipped, not failed;
-	// a manual sync still reports what is missing.
-	work := func(ctx context.Context) (map[string]interface{}, error) {
-		if err := h.app.RunSync(ctx); err != nil {
-			if errors.Is(err, ErrNotConfigured) {
-				return map[string]interface{}{"status": "skipped", "reason": err.Error()}, nil
-			}
-			return nil, err
-		}
-		return map[string]interface{}{"status": "ok"}, nil
-	}
-
-	if h.app.client.RunAsync(w, r, work) {
-		return
-	}
-
-	if err := h.app.RunSync(r.Context()); err != nil {
+	user := client.TokenInfo{UserID: client.GetUserID(r.Context()), Email: client.GetEmail(r.Context()), Name: client.GetName(r.Context())}
+	if err := h.app.RunSync(r.Context(), user); err != nil {
 		if errors.Is(err, ErrNotConfigured) {
 			writeErr(w, r, http.StatusBadRequest, "sync not configured: %v", err)
 			return
@@ -272,8 +259,31 @@ func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "ok"})
 }
 
+// handleSyncAll is core's scheduled sync: every user who picked a
+// credential, each from their own login.
+func (h *handler) handleSyncAll(w http.ResponseWriter, r *http.Request) {
+	work := func(ctx context.Context) (map[string]interface{}, error) {
+		results, err := h.app.SyncAllUsers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"status": "ok", "users": results}, nil
+	}
+
+	if h.app.client.RunAsync(w, r, work) {
+		return
+	}
+
+	results, err := h.app.SyncAllUsers(r.Context())
+	if err != nil {
+		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
+		return
+	}
+	writeJSON(w, r, http.StatusOK, SyncAllResult{Status: "ok", Users: results})
+}
+
 func (h *handler) handleSyncHistory(w http.ResponseWriter, r *http.Request) {
-	history, err := h.app.Store.ListSyncHistory(r.Context(), 50)
+	history, err := h.app.Store.ListSyncHistory(r.Context(), client.GetUserID(r.Context()), 50)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get sync history: %v", err)
 		return
@@ -281,6 +291,10 @@ func (h *handler) handleSyncHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"history": history})
 }
 
+// handleSetConfig saves the requesting user's choice of the vault
+// credential holding their Monarch login. Core is asked for the credential
+// as that user first, so nobody can point their sync at a credential that
+// is not shared with them.
 func (h *handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Key   string `json:"key"`
@@ -290,20 +304,49 @@ func (h *handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Key == "" {
-		writeErr(w, r, http.StatusBadRequest, "key required")
+	if body.Key != "vault_credential_id" {
+		writeErr(w, r, http.StatusBadRequest, "only vault_credential_id can be set")
 		return
 	}
-	if err := h.app.Store.SetConfig(r.Context(), body.Key, body.Value); err != nil {
+	if body.Value != "" {
+		_, err := h.app.client.WithHTTPClient(h.app.httpClient).WithToken(client.TokenFromRequest(r)).VaultGetCredential(r.Context(), body.Value)
+		var apiErr *client.APIError
+		if errors.As(err, &apiErr) && apiErr.StatusCode < 500 {
+			writeErr(w, r, http.StatusBadRequest, "vault credential %s is not one you can read", body.Value)
+			return
+		}
+		if err != nil {
+			writeErr(w, r, http.StatusBadGateway, "could not check the vault credential: %v", err)
+			return
+		}
+	}
+	userID := client.GetUserID(r.Context())
+	previous, err := h.app.Store.GetConfig(r.Context(), userID, body.Key)
+	if err != nil {
+		writeErr(w, r, http.StatusInternalServerError, "failed to read config: %v", err)
+		return
+	}
+	if err := h.app.Store.SetConfig(r.Context(), userID, body.Key, body.Value); err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to set config: %v", err)
 		return
 	}
+	if previous != body.Value {
+		// Another login's history is synced in full, not from where the
+		// previous one left off.
+		for _, cursor := range []string{"last_tx_sync_date", "last_perf_sync_date"} {
+			if err := h.app.Store.SetConfig(r.Context(), userID, cursor, ""); err != nil {
+				writeErr(w, r, http.StatusInternalServerError, "failed to reset sync progress: %v", err)
+				return
+			}
+		}
+	}
+	h.app.forgetSession(userID)
 	writeJSON(w, r, http.StatusOK, map[string]interface{}{"key": body.Key, "value": body.Value})
 }
 
 func (h *handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("key")
-	value, err := h.app.Store.GetConfig(r.Context(), key)
+	value, err := h.app.Store.GetConfig(r.Context(), client.GetUserID(r.Context()), key)
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get config: %v", err)
 		return

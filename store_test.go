@@ -2,102 +2,19 @@ package mmoney
 
 import (
 	"context"
-	"database/sql"
-	"os"
 	"testing"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupTestDB(t *testing.T) *Store {
 	t.Helper()
-	tmpFile, err := os.CreateTemp("", "mmoney-test-*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
-
-	db, err := sql.Open("sqlite3", tmpFile.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	schema, err := os.ReadFile("_migrations/20260613-000000-000-init.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(string(schema)); err != nil {
-		t.Fatal(err)
-	}
-
-	perf, err := os.ReadFile("_migrations/20260613-010000-000-investment-performance.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range splitSQL(string(perf)) {
-		if _, err := db.Exec(stmt); err != nil {
-			t.Logf("migration stmt skip: %v", err)
-		}
-	}
-
-	al, err := os.ReadFile("_migrations/20260613-020000-000-asset-liability-snapshots.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(string(al)); err != nil {
-		t.Logf("migration stmt skip: %v", err)
-	}
-
-	inv, err := os.ReadFile("_migrations/20260614-000000-000-investment-snapshots.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range splitSQL(string(inv)) {
-		if _, err := db.Exec(stmt); err != nil {
-			t.Logf("migration stmt skip: %v", err)
-		}
-	}
-
-	return NewStore(db)
-}
-
-func splitSQL(s string) []string {
-	var stmts []string
-	current := ""
-	for _, line := range splitLines(s) {
-		current += line + "\n"
-		if len(line) > 0 && line[len(line)-1] == ';' {
-			stmts = append(stmts, current)
-			current = ""
-		}
-	}
-	if current != "" {
-		stmts = append(stmts, current)
-	}
-	return stmts
-}
-
-func splitLines(s string) []string {
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
+	return NewStore(openMigratedDB(t, ""))
 }
 
 func TestUpsertAndListAccounts(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	err := store.UpsertAccount(ctx, LocalAccount{
+	err := store.UpsertAccount(ctx, "u1", LocalAccount{
 		ID:                "acc1",
 		DisplayName:       "Chase Checking",
 		AccountType:       "depository",
@@ -110,7 +27,7 @@ func TestUpsertAndListAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = store.UpsertAccount(ctx, LocalAccount{
+	err = store.UpsertAccount(ctx, "u1", LocalAccount{
 		ID:             "acc2",
 		DisplayName:    "Visa Card",
 		AccountType:    "credit",
@@ -120,7 +37,7 @@ func TestUpsertAndListAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accounts, err := store.ListAccounts(ctx)
+	accounts, err := store.ListAccounts(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +45,7 @@ func TestUpsertAndListAccounts(t *testing.T) {
 		t.Fatalf("expected 2 accounts, got %d", len(accounts))
 	}
 
-	err = store.UpsertAccount(ctx, LocalAccount{
+	err = store.UpsertAccount(ctx, "u1", LocalAccount{
 		ID:             "acc1",
 		DisplayName:    "Chase Checking Updated",
 		AccountType:    "depository",
@@ -139,7 +56,7 @@ func TestUpsertAndListAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	accounts, err = store.ListAccounts(ctx)
+	accounts, err = store.ListAccounts(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +75,7 @@ func TestUpsertAndListTransactions(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		store.UpsertTransaction(ctx, LocalTransaction{
+		store.UpsertTransaction(ctx, "u1", LocalTransaction{
 			ID:       "tx" + string(rune('0'+i)),
 			Date:     "2026-06-10",
 			Amount:   -42.50,
@@ -168,7 +85,7 @@ func TestUpsertAndListTransactions(t *testing.T) {
 		})
 	}
 	for i := 0; i < 3; i++ {
-		store.UpsertTransaction(ctx, LocalTransaction{
+		store.UpsertTransaction(ctx, "u1", LocalTransaction{
 			ID:       "tx" + string(rune('5'+i)),
 			Date:     "2026-06-11",
 			Amount:   3000.00,
@@ -178,7 +95,7 @@ func TestUpsertAndListTransactions(t *testing.T) {
 		})
 	}
 
-	txs, total, err := store.ListTransactions(ctx, "2026-06-10", "2026-06-11", 50, 0)
+	txs, total, err := store.ListTransactions(ctx, "u1", "2026-06-10", "2026-06-11", 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +106,7 @@ func TestUpsertAndListTransactions(t *testing.T) {
 		t.Fatalf("expected 8 returned, got %d", len(txs))
 	}
 
-	txs, total, err = store.ListTransactions(ctx, "2026-06-10", "2026-06-10", 50, 0)
+	_, total, err = store.ListTransactions(ctx, "u1", "2026-06-10", "2026-06-10", 50, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,16 +119,16 @@ func TestSearchTransactions(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertTransaction(ctx, LocalTransaction{
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{
 		ID: "tx1", Date: "2026-06-10", Amount: -25.00,
 		Merchant: "Starbucks", Category: "Coffee", TagsJSON: "[]",
 	})
-	store.UpsertTransaction(ctx, LocalTransaction{
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{
 		ID: "tx2", Date: "2026-06-10", Amount: -100.00,
 		Merchant: "Amazon", Category: "Shopping", TagsJSON: "[]",
 	})
 
-	results, err := store.SearchTransactions(ctx, "Starbucks", 10)
+	results, err := store.SearchTransactions(ctx, "u1", "Starbucks", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,10 +144,10 @@ func TestUpsertAndListCategories(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertCategory(ctx, LocalCategory{ID: "cat1", Name: "Food", GroupName: "Expenses", GroupType: "expense"})
-	store.UpsertCategory(ctx, LocalCategory{ID: "cat2", Name: "Paycheck", GroupName: "Income", GroupType: "income"})
+	store.UpsertCategory(ctx, "u1", LocalCategory{ID: "cat1", Name: "Food", GroupName: "Expenses", GroupType: "expense"})
+	store.UpsertCategory(ctx, "u1", LocalCategory{ID: "cat2", Name: "Paycheck", GroupName: "Income", GroupType: "income"})
 
-	cats, err := store.ListCategories(ctx)
+	cats, err := store.ListCategories(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,10 +160,10 @@ func TestUpsertAndListBudgets(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertBudget(ctx, LocalBudget{ID: "b1", CategoryID: "cat1", CategoryName: "Food", Month: "2026-06", Planned: 500, Actual: -320})
-	store.UpsertBudget(ctx, LocalBudget{ID: "b2", CategoryID: "cat2", CategoryName: "Transport", Month: "2026-06", Planned: 200, Actual: -150})
+	store.UpsertBudget(ctx, "u1", LocalBudget{ID: "b1", CategoryID: "cat1", CategoryName: "Food", Month: "2026-06", Planned: 500, Actual: -320})
+	store.UpsertBudget(ctx, "u1", LocalBudget{ID: "b2", CategoryID: "cat2", CategoryName: "Transport", Month: "2026-06", Planned: 200, Actual: -150})
 
-	budgets, err := store.ListBudgets(ctx, "2026-06")
+	budgets, err := store.ListBudgets(ctx, "u1", "2026-06")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,7 +171,7 @@ func TestUpsertAndListBudgets(t *testing.T) {
 		t.Fatalf("expected 2 budgets, got %d", len(budgets))
 	}
 
-	all, err := store.ListBudgets(ctx, "")
+	all, err := store.ListBudgets(ctx, "u1", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,10 +184,10 @@ func TestUpsertAndListRecurring(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertRecurring(ctx, LocalRecurring{ID: "r1", Merchant: "Netflix", Amount: -15.49, Frequency: "monthly", NextDate: "2026-07-01"})
-	store.UpsertRecurring(ctx, LocalRecurring{ID: "r2", Merchant: "Spotify", Amount: -9.99, Frequency: "monthly", NextDate: "2026-07-05"})
+	store.UpsertRecurring(ctx, "u1", LocalRecurring{ID: "r1", Merchant: "Netflix", Amount: -15.49, Frequency: "monthly", NextDate: "2026-07-01"})
+	store.UpsertRecurring(ctx, "u1", LocalRecurring{ID: "r2", Merchant: "Spotify", Amount: -9.99, Frequency: "monthly", NextDate: "2026-07-05"})
 
-	recurring, err := store.ListRecurring(ctx)
+	recurring, err := store.ListRecurring(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,9 +200,9 @@ func TestUpsertAndListInvestments(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertInvestment(ctx, LocalInvestment{ID: "inv1", SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard Total", Quantity: 50, Basis: 10000, TotalValue: 12500, Price: 250})
+	store.UpsertInvestment(ctx, "u1", LocalInvestment{ID: "inv1", SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard Total", Quantity: 50, Basis: 10000, TotalValue: 12500, Price: 250})
 
-	investments, err := store.ListInvestments(ctx)
+	investments, err := store.ListInvestments(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,11 +218,11 @@ func TestSnapshotsAndNetWorth(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertSnapshot(ctx, LocalSnapshot{Date: "2026-06-01", Balance: 100000})
-	store.UpsertSnapshot(ctx, LocalSnapshot{Date: "2026-06-02", Balance: 101000})
-	store.UpsertSnapshot(ctx, LocalSnapshot{Date: "2026-06-03", Balance: 99000})
+	store.UpsertSnapshot(ctx, "u1", LocalSnapshot{Date: "2026-06-01", Balance: 100000})
+	store.UpsertSnapshot(ctx, "u1", LocalSnapshot{Date: "2026-06-02", Balance: 101000})
+	store.UpsertSnapshot(ctx, "u1", LocalSnapshot{Date: "2026-06-03", Balance: 99000})
 
-	snaps, err := store.ListSnapshots(ctx, "2026-06-01", "2026-06-03")
+	snaps, err := store.ListSnapshots(ctx, "u1", "2026-06-01", "2026-06-03")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,8 +230,8 @@ func TestSnapshotsAndNetWorth(t *testing.T) {
 		t.Fatalf("expected 3 snapshots, got %d", len(snaps))
 	}
 
-	store.UpsertSnapshot(ctx, LocalSnapshot{Date: "2026-06-01", Balance: 100500})
-	snaps, err = store.ListSnapshots(ctx, "2026-06-01", "2026-06-01")
+	store.UpsertSnapshot(ctx, "u1", LocalSnapshot{Date: "2026-06-01", Balance: 100500})
+	snaps, err = store.ListSnapshots(ctx, "u1", "2026-06-01", "2026-06-01")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,10 +244,10 @@ func TestAssetLiabilitySnapshots(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertAssetLiabilitySnapshot(ctx, AssetLiabilitySnapshot{Month: "2026-05", Assets: 500000, Liabilities: -100000, NetWorth: 400000})
-	store.UpsertAssetLiabilitySnapshot(ctx, AssetLiabilitySnapshot{Month: "2026-06", Assets: 520000, Liabilities: -95000, NetWorth: 425000})
+	store.UpsertAssetLiabilitySnapshot(ctx, "u1", AssetLiabilitySnapshot{Month: "2026-05", Assets: 500000, Liabilities: -100000, NetWorth: 400000})
+	store.UpsertAssetLiabilitySnapshot(ctx, "u1", AssetLiabilitySnapshot{Month: "2026-06", Assets: 520000, Liabilities: -95000, NetWorth: 425000})
 
-	snaps, err := store.ListAssetLiabilitySnapshots(ctx)
+	snaps, err := store.ListAssetLiabilitySnapshots(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -346,10 +263,10 @@ func TestSyncLogAndHistory(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.LogSync(ctx, 1000, "ok", "", 10, 500)
-	store.LogSync(ctx, 2000, "error", "auth failed", 0, 0)
+	store.LogSync(ctx, "u1", 1000, "ok", "", 10, 500)
+	store.LogSync(ctx, "u1", 2000, "error", "auth failed", 0, 0)
 
-	status, err := store.GetLastSync(ctx)
+	status, err := store.GetLastSync(ctx, "u1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +274,7 @@ func TestSyncLogAndHistory(t *testing.T) {
 		t.Fatalf("expected last status error, got %s", status.Status)
 	}
 
-	history, err := store.ListSyncHistory(ctx, 10)
+	history, err := store.ListSyncHistory(ctx, "u1", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +290,7 @@ func TestConfig(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	val, err := store.GetConfig(ctx, "vault_credential_id")
+	val, err := store.GetConfig(ctx, "u1", "vault_credential_id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,8 +298,8 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("expected empty config, got %s", val)
 	}
 
-	store.SetConfig(ctx, "vault_credential_id", "abc-123")
-	val, err = store.GetConfig(ctx, "vault_credential_id")
+	store.SetConfig(ctx, "u1", "vault_credential_id", "abc-123")
+	val, err = store.GetConfig(ctx, "u1", "vault_credential_id")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,8 +307,8 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("expected abc-123, got %s", val)
 	}
 
-	store.SetConfig(ctx, "vault_credential_id", "def-456")
-	val, _ = store.GetConfig(ctx, "vault_credential_id")
+	store.SetConfig(ctx, "u1", "vault_credential_id", "def-456")
+	val, _ = store.GetConfig(ctx, "u1", "vault_credential_id")
 	if val != "def-456" {
 		t.Fatalf("expected updated value def-456, got %s", val)
 	}
@@ -401,12 +318,12 @@ func TestCashflowReport(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertTransaction(ctx, LocalTransaction{ID: "t1", Date: "2026-06-01", Amount: 5000, Merchant: "Employer", Category: "Paycheck", CategoryGroupType: "income", TagsJSON: "[]"})
-	store.UpsertTransaction(ctx, LocalTransaction{ID: "t2", Date: "2026-06-05", Amount: -42.50, Merchant: "Grocery", Category: "Food", CategoryGroupType: "expense", TagsJSON: "[]"})
-	store.UpsertTransaction(ctx, LocalTransaction{ID: "t3", Date: "2026-06-05", Amount: -15.00, Merchant: "Netflix", Category: "Entertainment", CategoryGroupType: "expense", TagsJSON: "[]"})
-	store.UpsertTransaction(ctx, LocalTransaction{ID: "t4", Date: "2026-06-10", Amount: 200, Merchant: "Side Job", Category: "Freelance", CategoryGroupType: "income", TagsJSON: "[]"})
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{ID: "t1", Date: "2026-06-01", Amount: 5000, Merchant: "Employer", Category: "Paycheck", CategoryGroupType: "income", TagsJSON: "[]"})
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{ID: "t2", Date: "2026-06-05", Amount: -42.50, Merchant: "Grocery", Category: "Food", CategoryGroupType: "expense", TagsJSON: "[]"})
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{ID: "t3", Date: "2026-06-05", Amount: -15.00, Merchant: "Netflix", Category: "Entertainment", CategoryGroupType: "expense", TagsJSON: "[]"})
+	store.UpsertTransaction(ctx, "u1", LocalTransaction{ID: "t4", Date: "2026-06-10", Amount: 200, Merchant: "Side Job", Category: "Freelance", CategoryGroupType: "income", TagsJSON: "[]"})
 
-	report, err := store.GetCashflowReport(ctx, "2026-06-01", "2026-06-30", false)
+	report, err := store.GetCashflowReport(ctx, "u1", "2026-06-01", "2026-06-30", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,15 +352,15 @@ func TestPruneOldSyncLogs(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.LogSync(ctx, 1000, "ok", "", 10, 500)
-	store.LogSync(ctx, 2000, "ok", "", 10, 500)
+	store.LogSync(ctx, "u1", 1000, "ok", "", 10, 500)
+	store.LogSync(ctx, "u1", 2000, "ok", "", 10, 500)
 
 	err := store.PruneOldSyncLogs(ctx, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	history, _ := store.ListSyncHistory(ctx, 10)
+	history, _ := store.ListSyncHistory(ctx, "u1", 10)
 	if len(history) != 0 {
 		t.Fatalf("expected 0 after prune, got %d", len(history))
 	}
@@ -453,10 +370,10 @@ func TestInvestmentPerformance(t *testing.T) {
 	store := setupTestDB(t)
 	ctx := context.Background()
 
-	store.UpsertInvestmentPerformance(ctx, LocalInvestmentPerformance{SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard", Date: "2026-06-01", ReturnPercent: 5.2, Value: 12500})
-	store.UpsertInvestmentPerformance(ctx, LocalInvestmentPerformance{SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard", Date: "2026-06-02", ReturnPercent: 5.5, Value: 12600})
+	store.UpsertInvestmentPerformance(ctx, "u1", LocalInvestmentPerformance{SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard", Date: "2026-06-01", ReturnPercent: 5.2, Value: 12500})
+	store.UpsertInvestmentPerformance(ctx, "u1", LocalInvestmentPerformance{SecurityID: "sec1", Ticker: "VTI", Name: "Vanguard", Date: "2026-06-02", ReturnPercent: 5.5, Value: 12600})
 
-	perf, err := store.ListInvestmentPerformance(ctx, "sec1", "2026-06-01", "2026-06-02")
+	perf, err := store.ListInvestmentPerformance(ctx, "u1", "sec1", "2026-06-01", "2026-06-02")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +381,7 @@ func TestInvestmentPerformance(t *testing.T) {
 		t.Fatalf("expected 2 points, got %d", len(perf))
 	}
 
-	perf, err = store.ListInvestmentPerformance(ctx, "sec1", "2026-06-02", "2026-06-02")
+	perf, err = store.ListInvestmentPerformance(ctx, "u1", "sec1", "2026-06-02", "2026-06-02")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,23 +2,26 @@ package mmoney
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/localitas/localitas-app-mmoney/internal/monarch"
 	"github.com/localitas/localitas-app-mmoney/internal/monarchauth"
 	"github.com/localitas/localitas-app-mmoney/internal/monarcherr"
 	"github.com/localitas/localitas-app-mmoney/internal/monarchgql"
+	client "github.com/localitas/localitas-go"
 )
 
 const monarchGraphQLEndpoint = "https://api.monarch.com/graphql"
 const sp500SecurityID = "119563102644090322"
 const bondsSecurityID = "78665972690706707"
 
-// ErrNotConfigured means no Monarch credential has been set up yet.
+// ErrNotConfigured means the user has not picked a Monarch credential yet.
 var ErrNotConfigured = errors.New("no vault credential configured: set vault_credential_id in config")
 
 type VaultCredential struct {
@@ -27,35 +30,53 @@ type VaultCredential struct {
 	MFASecret string `json:"mfa_secret"`
 }
 
-func (a *App) resolveVaultCredential(ctx context.Context) (*VaultCredential, error) {
-	credID, err := a.Store.GetConfig(ctx, "vault_credential_id")
-	if err != nil || credID == "" {
-		return nil, ErrNotConfigured
-	}
+// monarchSession is a user's signed-in Monarch token and when to sign in
+// again.
+type monarchSession struct {
+	token   string
+	expires time.Time
+}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", a.coreURL+"/apps/vault/api/credentials/"+credID+"/secrets", nil)
+// identityKeyDomain is the domain core derives the identity-token signing
+// key under from the cluster API token.
+const identityKeyDomain = "localitas-internal-token-v1"
+
+// identityToken is a token core accepts as user: the identity core would put
+// on a request from them, capped at read. The vault serves a credential's
+// secrets only to the users it is shared with, so a sync reads each user's
+// credential as that user, not as the app.
+func (a *App) identityToken(user client.TokenInfo) (string, error) {
+	if a.token == "" {
+		return "", errors.New("no API token to sign the user's identity with")
+	}
+	user.Permission = string(client.ScopeRead)
+	claims, err := json.Marshal(user)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(identityKeyDomain + ":" + a.token))
+	mac := hmac.New(sha256.New, []byte(base64.StdEncoding.EncodeToString(sum[:])))
+	payload := base64.RawURLEncoding.EncodeToString(claims)
+	mac.Write([]byte(payload))
+	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil)), nil
+}
+
+func (a *App) resolveVaultCredential(ctx context.Context, user client.TokenInfo) (*VaultCredential, error) {
+	credID, err := a.Store.GetConfig(ctx, user.UserID, "vault_credential_id")
 	if err != nil {
 		return nil, err
 	}
-	if a.token != "" {
-		req.Header.Set("Authorization", "Bearer "+a.token)
+	if credID == "" {
+		return nil, ErrNotConfigured
 	}
-
-	resp, err := a.httpClient.Do(req)
+	token, err := a.identityToken(user)
 	if err != nil {
-		return nil, fmt.Errorf("vault request failed: %w", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("vault returned %d", resp.StatusCode)
+	secrets, err := a.client.WithHTTPClient(a.httpClient).WithToken(token).VaultGetSecrets(ctx, credID)
+	if err != nil {
+		return nil, fmt.Errorf("vault: %w", err)
 	}
-
-	var secrets map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&secrets); err != nil {
-		return nil, fmt.Errorf("vault decode failed: %w", err)
-	}
-
 	return &VaultCredential{
 		Email:     secrets["email"],
 		Password:  secrets["password"],
@@ -63,38 +84,94 @@ func (a *App) resolveVaultCredential(ctx context.Context) (*VaultCredential, err
 	}, nil
 }
 
-func (a *App) authenticate(ctx context.Context) (*monarchgql.Client, error) {
-	if a.cachedToken != "" && time.Now().UTC().Before(a.cachedTokenExpiry) {
-		return monarchgql.NewClient(monarchGraphQLEndpoint, a.cachedToken, 30*time.Second), nil
+func (a *App) authenticate(ctx context.Context, user client.TokenInfo) (*monarchgql.Client, error) {
+	a.sessionsMu.Lock()
+	session, ok := a.sessions[user.UserID]
+	a.sessionsMu.Unlock()
+	if ok && time.Now().UTC().Before(session.expires) {
+		return monarchgql.NewClient(monarchGraphQLEndpoint, session.token, 30*time.Second), nil
 	}
 
-	cred, err := a.resolveVaultCredential(ctx)
+	cred, err := a.resolveVaultCredential(ctx, user)
 	if err != nil {
 		return nil, err
 	}
 
-	session, err := monarchauth.Authenticate(cred.Email, cred.Password, "", cred.MFASecret)
+	signedIn, err := monarchauth.Authenticate(cred.Email, cred.Password, "", cred.MFASecret)
 	if err != nil {
 		return nil, fmt.Errorf("monarch auth failed: %w", err)
 	}
 
-	a.cachedToken = session.Token
-	a.cachedTokenExpiry = time.Now().UTC().Add(9 * time.Minute)
+	a.sessionsMu.Lock()
+	a.sessions[user.UserID] = monarchSession{token: signedIn.Token, expires: time.Now().UTC().Add(9 * time.Minute)}
+	a.sessionsMu.Unlock()
 
-	return monarchgql.NewClient(monarchGraphQLEndpoint, session.Token, 30*time.Second), nil
+	return monarchgql.NewClient(monarchGraphQLEndpoint, signedIn.Token, 30*time.Second), nil
 }
 
-func (a *App) RunSync(ctx context.Context) error {
+func (a *App) forgetSession(userID string) {
+	a.sessionsMu.Lock()
+	delete(a.sessions, userID)
+	a.sessionsMu.Unlock()
+}
+
+// UserSyncResult is how one user's part of a scheduled sync went.
+type UserSyncResult struct {
+	UserID string `json:"user_id"`
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+// SyncAllUsers syncs every user who picked a credential, each from their
+// own Monarch login. One user's failure is in their sync history and does
+// not stop the others.
+func (a *App) SyncAllUsers(ctx context.Context) ([]UserSyncResult, error) {
+	userIDs, err := a.Store.ConfiguredUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]UserSyncResult, 0, len(userIDs))
+	if len(userIDs) == 0 {
+		return results, nil
+	}
+	directory, err := a.client.WithHTTPClient(a.httpClient).ListUsers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	known := make(map[string]client.UserSummary, len(directory))
+	for _, u := range directory {
+		known[u.ID] = u
+	}
+	for _, id := range userIDs {
+		u, ok := known[id]
+		if !ok {
+			logger.Warn("skipping the sync of a user core no longer knows", "user_id", id)
+			results = append(results, UserSyncResult{UserID: id, Status: "skipped", Error: "unknown user"})
+			continue
+		}
+		if err := a.RunSync(ctx, client.TokenInfo{UserID: u.ID, Email: u.Email, Name: u.Name}); err != nil {
+			results = append(results, UserSyncResult{UserID: id, Status: "error", Error: err.Error()})
+			continue
+		}
+		results = append(results, UserSyncResult{UserID: id, Status: "ok"})
+	}
+	return results, nil
+}
+
+// RunSync syncs user's data from the Monarch login in their vault
+// credential.
+func (a *App) RunSync(ctx context.Context, user client.TokenInfo) error {
+	userID := user.UserID
 	startedAt := time.Now().UTC().Unix()
 	accountCount := 0
 	txCount := 0
 
 	a.Store.PruneOldSyncLogs(ctx, 3)
 
-	gqlClient, err := a.authenticate(ctx)
+	gqlClient, err := a.authenticate(ctx, user)
 	if err != nil {
 		if !errors.Is(err, ErrNotConfigured) {
-			a.Store.LogSync(ctx, startedAt, "error", err.Error(), 0, 0)
+			a.Store.LogSync(ctx, userID, startedAt, "error", err.Error(), 0, 0)
 		}
 		return err
 	}
@@ -104,23 +181,23 @@ func (a *App) RunSync(ctx context.Context) error {
 	accounts, err := svc.ListAccounts(ctx)
 	if err != nil {
 		if merr, ok := err.(*monarcherr.Error); ok && merr.Code == monarcherr.AuthSessionExpired {
-			a.cachedToken = ""
-			gqlClient, err = a.authenticate(ctx)
+			a.forgetSession(userID)
+			gqlClient, err = a.authenticate(ctx, user)
 			if err != nil {
-				a.Store.LogSync(ctx, startedAt, "error", err.Error(), 0, 0)
+				a.Store.LogSync(ctx, userID, startedAt, "error", err.Error(), 0, 0)
 				return err
 			}
 			svc = monarch.NewService(gqlClient)
 			accounts, err = svc.ListAccounts(ctx)
 		}
 		if err != nil {
-			a.Store.LogSync(ctx, startedAt, "error", err.Error(), 0, 0)
+			a.Store.LogSync(ctx, userID, startedAt, "error", err.Error(), 0, 0)
 			return err
 		}
 	}
 
 	for _, acc := range accounts {
-		if err := a.Store.UpsertAccount(ctx, LocalAccount{
+		if err := a.Store.UpsertAccount(ctx, userID, LocalAccount{
 			ID:                acc.ID,
 			DisplayName:       acc.DisplayName,
 			AccountType:       acc.AccountType,
@@ -146,27 +223,27 @@ func (a *App) RunSync(ctx context.Context) error {
 		}
 	}
 
-	txCount, err = a.syncTransactions(ctx, svc)
+	txCount, err = a.syncTransactions(ctx, userID, svc)
 	if err != nil {
 		logger.Error("transaction sync error", "error", err)
 	}
 
-	a.syncCategories(ctx, svc)
-	a.syncBudgets(ctx, svc)
-	a.syncRecurring(ctx, svc)
-	a.syncInvestments(ctx, svc)
-	a.syncSnapshots(ctx, svc)
-	a.syncAssetLiabilitySnapshots(ctx, svc)
-	a.syncCreditScores(ctx, svc)
+	a.syncCategories(ctx, userID, svc)
+	a.syncBudgets(ctx, userID, svc)
+	a.syncRecurring(ctx, userID, svc)
+	a.syncInvestments(ctx, userID, svc)
+	a.syncSnapshots(ctx, userID, svc)
+	a.syncAssetLiabilitySnapshots(ctx, userID, svc)
+	a.syncCreditScores(ctx, userID, svc)
 
-	a.Store.LogSync(ctx, startedAt, "ok", "", accountCount, txCount)
-	logger.Info("sync complete", "accounts", accountCount, "transactions", txCount)
+	a.Store.LogSync(ctx, userID, startedAt, "ok", "", accountCount, txCount)
+	logger.Info("sync complete", "user_id", userID, "accounts", accountCount, "transactions", txCount)
 	return nil
 }
 
-func (a *App) syncTransactions(ctx context.Context, svc *monarch.Service) (int, error) {
+func (a *App) syncTransactions(ctx context.Context, userID string, svc *monarch.Service) (int, error) {
 	startDate := ""
-	lastSync, _ := a.Store.GetConfig(ctx, "last_tx_sync_date")
+	lastSync, _ := a.Store.GetConfig(ctx, userID, "last_tx_sync_date")
 	if lastSync != "" {
 		t, err := time.Parse("2006-01-02", lastSync)
 		if err == nil {
@@ -187,7 +264,7 @@ func (a *App) syncTransactions(ctx context.Context, svc *monarch.Service) (int, 
 	count := 0
 	for _, tx := range txs {
 		tagsJSON, _ := json.Marshal(tx.Tags)
-		if err := a.Store.UpsertTransaction(ctx, LocalTransaction{
+		if err := a.Store.UpsertTransaction(ctx, userID, LocalTransaction{
 			ID:                 tx.ID,
 			Date:               tx.Date,
 			Amount:             tx.Amount,
@@ -215,18 +292,18 @@ func (a *App) syncTransactions(ctx context.Context, svc *monarch.Service) (int, 
 		}
 	}
 
-	a.Store.SetConfig(ctx, "last_tx_sync_date", today)
+	a.Store.SetConfig(ctx, userID, "last_tx_sync_date", today)
 	return count, nil
 }
 
-func (a *App) syncCategories(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncCategories(ctx context.Context, userID string, svc *monarch.Service) {
 	cats, err := svc.ListCategories(ctx)
 	if err != nil {
 		logger.Error("category sync error", "error", err)
 		return
 	}
 	for _, c := range cats {
-		a.Store.UpsertCategory(ctx, LocalCategory{
+		a.Store.UpsertCategory(ctx, userID, LocalCategory{
 			ID:        c.ID,
 			Name:      c.Name,
 			GroupName: c.GroupName,
@@ -238,7 +315,7 @@ func (a *App) syncCategories(ctx context.Context, svc *monarch.Service) {
 	}
 }
 
-func (a *App) syncBudgets(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncBudgets(ctx context.Context, userID string, svc *monarch.Service) {
 	now := time.Now().UTC()
 	startDate := now.AddDate(0, -1, 0).Format("2006-01-02")
 	endDate := now.AddDate(0, 1, 0).Format("2006-01-02")
@@ -249,7 +326,7 @@ func (a *App) syncBudgets(ctx context.Context, svc *monarch.Service) {
 		return
 	}
 	for _, b := range budgets {
-		a.Store.UpsertBudget(ctx, LocalBudget{
+		a.Store.UpsertBudget(ctx, userID, LocalBudget{
 			ID:           b.CategoryID + "_" + b.Month,
 			CategoryID:   b.CategoryID,
 			CategoryName: b.CategoryName,
@@ -260,7 +337,7 @@ func (a *App) syncBudgets(ctx context.Context, svc *monarch.Service) {
 	}
 }
 
-func (a *App) syncRecurring(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncRecurring(ctx context.Context, userID string, svc *monarch.Service) {
 	now := time.Now().UTC()
 	startDate := now.Format("2006-01-02")
 	endDate := now.AddDate(0, 3, 0).Format("2006-01-02")
@@ -271,7 +348,7 @@ func (a *App) syncRecurring(ctx context.Context, svc *monarch.Service) {
 		return
 	}
 	for _, r := range recurring {
-		a.Store.UpsertRecurring(ctx, LocalRecurring{
+		a.Store.UpsertRecurring(ctx, userID, LocalRecurring{
 			ID:           r.ID,
 			Merchant:     r.Merchant,
 			Amount:       r.Amount,
@@ -284,7 +361,7 @@ func (a *App) syncRecurring(ctx context.Context, svc *monarch.Service) {
 	}
 }
 
-func (a *App) syncInvestments(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncInvestments(ctx context.Context, userID string, svc *monarch.Service) {
 	portfolio, err := svc.GetInvestmentPortfolio(ctx)
 	if err != nil {
 		logger.Error("investment sync error", "error", err)
@@ -292,7 +369,7 @@ func (a *App) syncInvestments(ctx context.Context, svc *monarch.Service) {
 	}
 	securityIDs := make([]string, 0)
 	for _, h := range portfolio.Holdings {
-		a.Store.UpsertInvestment(ctx, LocalInvestment{
+		a.Store.UpsertInvestment(ctx, userID, LocalInvestment{
 			ID:         h.ID,
 			SecurityID: h.SecurityID,
 			Ticker:     h.Ticker,
@@ -319,15 +396,15 @@ func (a *App) syncInvestments(ctx context.Context, svc *monarch.Service) {
 	}
 
 	if len(securityIDs) > 0 {
-		a.syncInvestmentPerformance(ctx, svc, securityIDs)
+		a.syncInvestmentPerformance(ctx, userID, svc, securityIDs)
 	}
 }
 
-func (a *App) syncInvestmentPerformance(ctx context.Context, svc *monarch.Service, securityIDs []string) {
+func (a *App) syncInvestmentPerformance(ctx context.Context, userID string, svc *monarch.Service, securityIDs []string) {
 	endDate := time.Now().UTC().Format("2006-01-02")
 	startDate := time.Now().UTC().AddDate(-1, 0, 0).Format("2006-01-02")
 
-	lastPerf, _ := a.Store.GetConfig(ctx, "last_perf_sync_date")
+	lastPerf, _ := a.Store.GetConfig(ctx, userID, "last_perf_sync_date")
 	if lastPerf != "" {
 		t, err := time.Parse("2006-01-02", lastPerf)
 		if err == nil {
@@ -344,7 +421,7 @@ func (a *App) syncInvestmentPerformance(ctx context.Context, svc *monarch.Servic
 	count := 0
 	for _, perf := range perfs {
 		for _, pt := range perf.Points {
-			a.Store.UpsertInvestmentPerformance(ctx, LocalInvestmentPerformance{
+			a.Store.UpsertInvestmentPerformance(ctx, userID, LocalInvestmentPerformance{
 				SecurityID:    perf.SecurityID,
 				Ticker:        perf.Ticker,
 				Name:          perf.Name,
@@ -356,25 +433,25 @@ func (a *App) syncInvestmentPerformance(ctx context.Context, svc *monarch.Servic
 		}
 	}
 
-	a.Store.SetConfig(ctx, "last_perf_sync_date", endDate)
+	a.Store.SetConfig(ctx, userID, "last_perf_sync_date", endDate)
 	logger.Info("synced investment performance", "count", count)
 }
 
-func (a *App) syncSnapshots(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncSnapshots(ctx context.Context, userID string, svc *monarch.Service) {
 	snapshots, err := svc.GetAggregateSnapshots(ctx, "", "", "")
 	if err != nil {
 		logger.Error("snapshot sync error", "error", err)
 		return
 	}
 	for _, s := range snapshots {
-		a.Store.UpsertSnapshot(ctx, LocalSnapshot{
+		a.Store.UpsertSnapshot(ctx, userID, LocalSnapshot{
 			Date:    s.Date,
 			Balance: s.Amount,
 		})
 	}
 }
 
-func (a *App) syncAssetLiabilitySnapshots(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncAssetLiabilitySnapshots(ctx context.Context, userID string, svc *monarch.Service) {
 	startDate := "2020-01-01"
 	snapshots, groups, err := svc.GetSnapshotsByAccountType(ctx, startDate, "month")
 	if err != nil {
@@ -406,19 +483,19 @@ func (a *App) syncAssetLiabilitySnapshots(ctx context.Context, svc *monarch.Serv
 
 	for _, snap := range monthData {
 		snap.NetWorth = snap.Assets + snap.Liabilities
-		a.Store.UpsertAssetLiabilitySnapshot(ctx, *snap)
+		a.Store.UpsertAssetLiabilitySnapshot(ctx, userID, *snap)
 	}
 	logger.Info("synced asset/liability monthly snapshots", "count", len(monthData))
 }
 
-func (a *App) syncCreditScores(ctx context.Context, svc *monarch.Service) {
+func (a *App) syncCreditScores(ctx context.Context, userID string, svc *monarch.Service) {
 	scores, err := svc.GetCreditHistory(ctx)
 	if err != nil {
 		logger.Error("credit score sync error", "error", err)
 		return
 	}
 	for _, s := range scores {
-		a.Store.UpsertCreditScore(ctx, LocalCreditScore{
+		a.Store.UpsertCreditScore(ctx, userID, LocalCreditScore{
 			Date:  s.Date,
 			Score: s.Score,
 		})

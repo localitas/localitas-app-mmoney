@@ -9,6 +9,9 @@ Own your personal finance data. MMoney syncs your complete financial history fro
 
 **Why?** Financial platforms can change their terms, shut down, or lock you out. Your transaction history, net worth trends, and spending patterns are yours. MMoney gives you a permanent local archive that you control — query it, search it, build on it, back it up. No vendor lock-in, no API rate limits, no subscription required to access your own data.
 
+Each user syncs their own Monarch login and sees only what it synced. What
+was synced before MMoney became per-user goes to the first admin who opens it.
+
 ## Prerequisites
 
 1. **Sign up for [Monarch Money](https://www.monarchmoney.com)**. Monarch Money is a personal finance platform that aggregates all your bank accounts, credit cards, loans, investments, and property values in one place via Plaid and other data providers. Create an account and link your financial institutions through their app. MMoney uses Monarch Money as the data source — it handles the hard part of connecting to hundreds of banks securely.
@@ -64,7 +67,9 @@ curl -X POST http://localhost:8080/apps/ext/mmoney/api/config \
   -d '{"key": "vault_credential_id", "value": "abc123-def456-..."}'
 ```
 
-Replace `abc123-def456-...` with the `public_id` from step 1.
+Replace `abc123-def456-...` with the `public_id` from step 1. The credential
+must be one the vault shares with you: MMoney asks the vault for it as you
+and refuses one you cannot read.
 
 ### Step 3: Run the first sync
 
@@ -153,15 +158,18 @@ This is your personal Monte Carlo — one chart, multiple futures.
 
 ## Sync
 
-**POST /api/sync** — Trigger a manual sync from Monarch Money.
+**POST /api/sync** — Sync your data from Monarch Money now. Core's scheduled sync calls it to sync every user who picked a credential, each from their own login.
 
 **GET /api/sync-status** — Check last sync time and status.
 
 ## Configuration
 
-**POST /api/config** — Set a config value (e.g. `vault_credential_id`).
+**POST /api/config** — Pick your vault credential (`vault_credential_id`, the only key that can be set).
 
-**GET /api/config/{key}** — Get a config value.
+**GET /api/config/{key}** — Get one of your config values.
+
+Two users who sync the same Monarch login do not each get a copy: rows keyed
+by Monarch's ids stay with whoever synced them first.
 
 ## Build & Deploy
 

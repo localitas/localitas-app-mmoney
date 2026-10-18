@@ -183,3 +183,9 @@ type NetWorthPoint struct {
 	Date    string  `json:"date"`
 	Balance float64 `json:"balance"`
 }
+
+// SyncAllResult answers core's scheduled sync with how each user's went.
+type SyncAllResult struct {
+	Status string           `json:"status"`
+	Users  []UserSyncResult `json:"users"`
+}

@@ -33,7 +33,7 @@ func main() {
 	app := &cli.Command{
 		Name:    "mmoney-server",
 		Usage:   "MMoney app server",
-		Version: version,
+		Version: version + " (" + commit + ")",
 		Commands: []*cli.Command{
 			serveCommand(),
 			migrateCommand(),
@@ -94,7 +94,7 @@ func serveAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	defer a.Store.Close()
 
-	a.SetCoreAccess(coreURL, token)
+	a.SetAPIToken(token)
 
 	mux := http.NewServeMux()
 	a.RegisterRoutes(mux)

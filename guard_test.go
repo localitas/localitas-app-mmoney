@@ -43,8 +43,8 @@ func guardedCall(mux *http.ServeMux, method, path, token, body string) int {
 	return rec.Code
 }
 
-// The household's finances are not served to callers core has not
-// vouched for, and only an admin chooses which credential the app syncs.
+// Finances are not served to callers core has not vouched for, and a user
+// syncs only from a credential the vault shares with them.
 func TestMoney_RoutesRequireAVerifiedUser(t *testing.T) {
 	app := setupTestApp(t)
 	mux := http.NewServeMux()
@@ -60,12 +60,15 @@ func TestMoney_RoutesRequireAVerifiedUser(t *testing.T) {
 			t.Errorf("POST /api/sync with %q: %d, want 401", token, got)
 		}
 	}
-	body := `{"key":"vault_credential_id","value":"someone-elses-credential"}`
-	if got := guardedCall(mux, "POST", "/api/config", identity("bob", "write"), body); got != http.StatusForbidden {
-		t.Fatalf("a non-admin sets the synced credential: %d, want 403", got)
+	body := `{"key":"vault_credential_id","value":"test-123"}`
+	if got := guardedCall(mux, "POST", "/api/config", identity("bob", "write"), body); got != http.StatusBadRequest {
+		t.Fatalf("a user points their sync at someone else's credential: %d, want 400", got)
 	}
-	if got := guardedCall(mux, "POST", "/api/config", identity("root", "admin"), body); got != http.StatusOK {
-		t.Fatalf("an admin sets the synced credential: %d, want 200", got)
+	if got := guardedCall(mux, "POST", "/api/config", identity("reader", "read"), body); got != http.StatusForbidden {
+		t.Fatalf("a read-only user sets a credential: %d, want 403", got)
+	}
+	if got := guardedCall(mux, "POST", "/api/config", identity("admin-user", "write"), body); got != http.StatusOK {
+		t.Fatalf("a user picks their own credential: %d, want 200", got)
 	}
 	if got := guardedCall(mux, "POST", "/api/sync", identity("reader", "read"), "{}"); got != http.StatusForbidden {
 		t.Fatalf("a read-only user starts a sync: %d, want 403", got)

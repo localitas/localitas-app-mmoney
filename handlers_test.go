@@ -2,52 +2,23 @@ package mmoney
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	client "github.com/localitas/localitas-go"
 )
 
+// setupTestApp is an app whose admin-user owns the vault credential
+// test-123.
 func setupTestApp(t *testing.T) *App {
 	t.Helper()
-	tmpFile, err := os.CreateTemp("", "mmoney-handler-test-*.db")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Remove(tmpFile.Name()) })
-
-	db, err := sql.Open("sqlite3", tmpFile.Name())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
-
-	schema, err := os.ReadFile("_migrations/20260613-000000-000-init.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(string(schema)); err != nil {
-		t.Fatal(err)
-	}
-
-	perf, err := os.ReadFile("_migrations/20260613-010000-000-investment-performance.sql")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, stmt := range splitSQL(string(perf)) {
-		db.Exec(stmt)
-	}
-
-	al, _ := os.ReadFile("_migrations/20260613-020000-000-asset-liability-snapshots.sql")
-	db.Exec(string(al))
-
-	store := NewStore(db)
-	app := &App{Store: store, BasePath: "/"}
+	core := newStandInCore(t, map[string]string{"test-123": "admin-user"}, "admin-user")
+	app := New(client.New(core.URL).WithToken(testAPIToken), "/")
+	app.SetAPIToken(testAPIToken)
+	app.Store = NewStore(openMigratedDB(t, ""))
 	return app
 }
 
@@ -69,8 +40,8 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, body strin
 func TestHandlerListAccounts(t *testing.T) {
 	app := setupTestApp(t)
 	ctx := context.Background()
-	app.Store.UpsertAccount(ctx, LocalAccount{ID: "a1", DisplayName: "Checking", AccountType: "depository", DisplayBalance: 5000})
-	app.Store.UpsertAccount(ctx, LocalAccount{ID: "a2", DisplayName: "Credit", AccountType: "credit", DisplayBalance: -1000})
+	app.Store.UpsertAccount(ctx, "admin-user", LocalAccount{ID: "a1", DisplayName: "Checking", AccountType: "depository", DisplayBalance: 5000})
+	app.Store.UpsertAccount(ctx, "admin-user", LocalAccount{ID: "a2", DisplayName: "Credit", AccountType: "credit", DisplayBalance: -1000})
 
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
@@ -92,8 +63,8 @@ func TestHandlerListAccounts(t *testing.T) {
 func TestHandlerListTransactions(t *testing.T) {
 	app := setupTestApp(t)
 	ctx := context.Background()
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t1", Date: "2026-06-10", Amount: -25, Merchant: "Store", Category: "Food", TagsJSON: "[]"})
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t2", Date: "2026-06-11", Amount: 3000, Merchant: "Employer", Category: "Paycheck", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t1", Date: "2026-06-10", Amount: -25, Merchant: "Store", Category: "Food", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t2", Date: "2026-06-11", Amount: 3000, Merchant: "Employer", Category: "Paycheck", TagsJSON: "[]"})
 
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
@@ -116,8 +87,8 @@ func TestHandlerListTransactions(t *testing.T) {
 func TestHandlerSearch(t *testing.T) {
 	app := setupTestApp(t)
 	ctx := context.Background()
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t1", Date: "2026-06-10", Amount: -25, Merchant: "Starbucks", Category: "Coffee", TagsJSON: "[]"})
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t2", Date: "2026-06-10", Amount: -100, Merchant: "Amazon", Category: "Shopping", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t1", Date: "2026-06-10", Amount: -25, Merchant: "Starbucks", Category: "Coffee", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t2", Date: "2026-06-10", Amount: -100, Merchant: "Amazon", Category: "Shopping", TagsJSON: "[]"})
 
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
@@ -189,7 +160,7 @@ func TestHandlerSyncStatus(t *testing.T) {
 func TestHandlerSyncHistory(t *testing.T) {
 	app := setupTestApp(t)
 	ctx := context.Background()
-	app.Store.LogSync(ctx, 1000, "ok", "", 10, 500)
+	app.Store.LogSync(ctx, "admin-user", 1000, "ok", "", 10, 500)
 
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
@@ -210,8 +181,8 @@ func TestHandlerSyncHistory(t *testing.T) {
 func TestHandlerCashflowReport(t *testing.T) {
 	app := setupTestApp(t)
 	ctx := context.Background()
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t1", Date: "2026-06-01", Amount: 5000, Merchant: "Employer", Category: "Paycheck", TagsJSON: "[]"})
-	app.Store.UpsertTransaction(ctx, LocalTransaction{ID: "t2", Date: "2026-06-05", Amount: -42.50, Merchant: "Grocery", Category: "Food", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t1", Date: "2026-06-01", Amount: 5000, Merchant: "Employer", Category: "Paycheck", TagsJSON: "[]"})
+	app.Store.UpsertTransaction(ctx, "admin-user", LocalTransaction{ID: "t2", Date: "2026-06-05", Amount: -42.50, Merchant: "Grocery", Category: "Food", TagsJSON: "[]"})
 
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
