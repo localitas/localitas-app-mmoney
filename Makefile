@@ -36,11 +36,7 @@ lint:
 
 strict-lint: lint
 	@echo "Running staticcheck..."
-	@if ! command -v staticcheck > /dev/null 2>&1; then \
-		echo "Installing staticcheck..."; \
-		go install honnef.co/go/tools/cmd/staticcheck@latest; \
-	fi
-	@staticcheck ./...
+	@go tool staticcheck ./...
 	@echo "staticcheck passed"
 
 swagger:
@@ -54,20 +50,6 @@ build-all:
 	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -trimpath -o bin/mmoney-server-linux-arm64 ./cmd/mmoney-server
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build $(LDFLAGS) -trimpath -o bin/mmoney-server-darwin-arm64 ./cmd/mmoney-server
 	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build $(LDFLAGS) -trimpath -o bin/mmoney-server-darwin-amd64 ./cmd/mmoney-server
-
-build-release:
-	@echo "Building obfuscated release binaries..."
-	@if ! command -v garble > /dev/null 2>&1; then \
-		echo "Installing garble..."; \
-		go install mvdan.cc/garble@latest; \
-	fi
-	@mkdir -p bin
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 GOGARBLE=github.com/localitas garble -literals -tiny build $(LDFLAGS) -trimpath -o bin/mmoney-server-darwin-arm64 ./cmd/mmoney-server
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 GOGARBLE=github.com/localitas garble -literals -tiny build $(LDFLAGS) -trimpath -o bin/mmoney-server-darwin-amd64 ./cmd/mmoney-server
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 GOGARBLE=github.com/localitas garble -literals -tiny build $(LDFLAGS) -trimpath -o bin/mmoney-server-linux-amd64 ./cmd/mmoney-server
-	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 GOGARBLE=github.com/localitas garble -literals -tiny build $(LDFLAGS) -trimpath -o bin/mmoney-server-linux-arm64 ./cmd/mmoney-server
-	@echo "Release binaries built:"
-	@ls -lh bin/mmoney-server-*
 
 # ── Native (launchd) ─────────────────────────────────────────
 
