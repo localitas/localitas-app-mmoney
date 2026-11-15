@@ -269,7 +269,19 @@ func TestMoney_ScheduledSyncRunsForEachConfiguredUser(t *testing.T) {
 	want(t, setCredential(mux, alice, "cred-a"), http.StatusOK, "alice configures")
 	want(t, setCredential(mux, bob, "cred-b"), http.StatusOK, "bob configures")
 
-	want(t, call(mux, "POST", "/api/sync", testAPIToken, "{}"), http.StatusOK, "core's scheduled sync")
+	rec := call(mux, "POST", "/api/sync", testAPIToken, "{}")
+	want(t, rec, http.StatusOK, "core's scheduled sync")
+	assertWireKeys(t, rec.Body.Bytes(), "status", "users")
+	var result SyncAllResult
+	strictDecode(t, rec.Body.Bytes(), &result)
+	if result.Status != "ok" || len(result.Users) != 2 {
+		t.Fatalf("scheduled sync = %+v, want alice's and bob's runs", result)
+	}
+	for i, user := range []string{"alice", "bob"} {
+		if u := result.Users[i]; u.UserID != user || u.Status != "error" || !strings.Contains(u.Error, "vault sealed") {
+			t.Fatalf("%s's run = %+v, want the error from the sealed vault", user, u)
+		}
+	}
 
 	if got, wantReads := core.reads(), []string{"alice:cred-a", "bob:cred-b"}; !slices.Equal(got, wantReads) {
 		t.Fatalf("the scheduled sync read %v from the vault, want each user's own credential as that user: %v", got, wantReads)

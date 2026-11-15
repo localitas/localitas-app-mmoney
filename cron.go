@@ -1,30 +1,31 @@
 package mmoney
 
 import (
-	"encoding/json"
 	"net/http"
+
+	client "github.com/localitas/localitas-go"
 )
 
-func HandleCron(w http.ResponseWriter, r *http.Request) {
-	spec := map[string]interface{}{
-		"jobs": []map[string]interface{}{
-			{
-				"id":          "cron:mmoney:sync",
-				"path":        "/api/sync",
-				"method":      "POST",
-				"schedule":    "*/10 * * * *",
-				"description": "Syncs financial data",
-				"timeout":     "120s",
-				"retry": map[string]interface{}{
-					"max_attempts":       3,
-					"initial_delay":      "5s",
-					"max_delay":          "30s",
-					"backoff":            "exponential",
-					"backoff_multiplier": 2.0,
-				},
+var cronSpec = client.CronSpec{
+	Jobs: []client.CronJob{
+		{
+			ID:          "cron:mmoney:sync",
+			Path:        "/api/sync",
+			Method:      "POST",
+			Schedule:    "*/10 * * * *",
+			Description: "Syncs financial data",
+			Timeout:     "120s",
+			Retry: &client.CronRetry{
+				MaxAttempts:       3,
+				InitialDelay:      "5s",
+				MaxDelay:          "30s",
+				Backoff:           "exponential",
+				BackoffMultiplier: 2.0,
 			},
 		},
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(spec)
+	},
+}
+
+func HandleCron(w http.ResponseWriter, r *http.Request) {
+	cronSpec.ServeHTTP(w, r)
 }

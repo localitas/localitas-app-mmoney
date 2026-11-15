@@ -262,24 +262,24 @@ func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 // handleSyncAll is core's scheduled sync: every user who picked a
 // credential, each from their own login.
 func (h *handler) handleSyncAll(w http.ResponseWriter, r *http.Request) {
-	work := func(ctx context.Context) (map[string]interface{}, error) {
+	work := func(ctx context.Context) (SyncAllResult, error) {
 		results, err := h.app.SyncAllUsers(ctx)
 		if err != nil {
-			return nil, err
+			return SyncAllResult{}, err
 		}
-		return map[string]interface{}{"status": "ok", "users": results}, nil
+		return SyncAllResult{Status: "ok", Users: results}, nil
 	}
 
-	if h.app.client.RunAsync(w, r, work) {
+	if client.RunAsync(h.app.client, w, r, work) {
 		return
 	}
 
-	results, err := h.app.SyncAllUsers(r.Context())
+	result, err := work(r.Context())
 	if err != nil {
 		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, SyncAllResult{Status: "ok", Users: results})
+	writeJSON(w, r, http.StatusOK, result)
 }
 
 func (h *handler) handleSyncHistory(w http.ResponseWriter, r *http.Request) {
