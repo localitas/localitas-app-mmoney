@@ -1,15 +1,16 @@
 package mmoney
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
+	"crypto/ed25519"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	client "github.com/localitas/localitas-go"
 	"github.com/localitas/localitas-go/identitytest"
@@ -18,9 +19,12 @@ import (
 const testAPIToken = "lt_test_cluster_token"
 
 // signer signs identity tokens as core does; the app verifies them with its
-// public key and refuses legacy tokens, as it will once core stops
-// accepting them.
+// public key.
 var signer *identitytest.Signer
+
+// untrustedKey is an identity key core does not hold: the tokens it signs
+// are well formed, but the app does not trust it.
+var untrustedKey = ed25519.NewKeyFromSeed([]byte("mmoney-test-untrusted-key-seed-0"))
 
 func TestMain(m *testing.M) {
 	os.Setenv("LOCALITAS_API_TOKEN", testAPIToken)
@@ -37,14 +41,22 @@ func identity(userID, permission string) string {
 	return signer.Token(client.TokenInfo{UserID: userID, Email: userID + "@test.local", Permission: permission})
 }
 
-// apiTokenSigned signs claims with the legacy key derived from the api_token
-// every app holds — what an app could forge, and must not be accepted.
-func apiTokenSigned(claims string) string {
-	payload := base64.RawURLEncoding.EncodeToString([]byte(claims))
-	sum := sha256.Sum256([]byte("localitas-internal-token-v1:" + testAPIToken))
-	mac := hmac.New(sha256.New, []byte(base64.StdEncoding.EncodeToString(sum[:])))
-	mac.Write([]byte(payload))
-	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+// untrustedIdentity signs claims as core does but with a key core does not
+// hold — a forgery, which must not be accepted.
+func untrustedIdentity(userID, permission string) string {
+	now := time.Now().UTC()
+	info := client.TokenInfo{
+		UserID:     userID,
+		Email:      userID + "@test.local",
+		Permission: permission,
+		IssuedAt:   now.Unix(),
+		ExpiresAt:  now.Add(5 * time.Minute).Unix(),
+		MaxExpiry:  now.Add(24 * time.Hour).Unix(),
+		KeyID:      client.Ed25519KeyID(untrustedKey.Public().(ed25519.PublicKey)),
+	}
+	raw, _ := json.Marshal(info)
+	payload := base64.RawURLEncoding.EncodeToString(raw)
+	return payload + "." + base64.RawURLEncoding.EncodeToString(ed25519.Sign(untrustedKey, []byte(payload)))
 }
 
 func guardedCall(mux *http.ServeMux, method, path, token, body string) int {
@@ -65,7 +77,7 @@ func TestMoney_RoutesRequireAVerifiedUser(t *testing.T) {
 	mux := http.NewServeMux()
 	app.RegisterRoutes(mux)
 	forged := base64.StdEncoding.EncodeToString([]byte(`{"user_id":"x","permission":"admin"}`))
-	for _, token := range []string{"", forged, apiTokenSigned(`{"user_id":"x","email":"x@test.local","permission":"admin"}`)} {
+	for _, token := range []string{"", forged, untrustedIdentity("x", "admin")} {
 		for _, path := range []string{"/api/accounts", "/api/transactions", "/api/net-worth", "/api/config/vault_credential_id"} {
 			if got := guardedCall(mux, "GET", path, token, ""); got != http.StatusUnauthorized {
 				t.Errorf("GET %s with %q: %d, want 401", path, token, got)
