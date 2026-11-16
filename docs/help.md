@@ -29,7 +29,7 @@ was synced before MMoney became per-user goes to the first admin who opens it.
 The vault app encrypts and stores your credentials securely. The `data` field contains your Monarch Money login details:
 
 ```bash
-curl -X POST http://localhost:8080/apps/vault/api/credentials \
+curl -X POST http://localhost:8090/apps/vault/api/credentials \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -61,7 +61,7 @@ You can also create the credential through the Vault UI at `/apps/vault`.
 Tell MMoney which vault credential to use for authentication:
 
 ```bash
-curl -X POST http://localhost:8080/apps/ext/mmoney/api/config \
+curl -X POST http://localhost:8090/apps/ext/mmoney/api/config \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"key": "vault_credential_id", "value": "abc123-def456-..."}'
@@ -74,7 +74,7 @@ and refuses one you cannot read.
 ### Step 3: Run the first sync
 
 ```bash
-curl -X POST http://localhost:8080/apps/ext/mmoney/api/sync \
+curl -X POST http://localhost:8090/apps/ext/mmoney/api/sync \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -83,7 +83,7 @@ The first sync fetches your entire transaction history from Monarch Money. This 
 ### Step 4: Verify
 
 ```bash
-curl http://localhost:8080/apps/ext/mmoney/api/sync-status \
+curl http://localhost:8090/apps/ext/mmoney/api/sync-status \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -125,11 +125,19 @@ After the first sync, the automation app syncs every 10 minutes automatically. Y
 
 **GET /api/investments** — List investment holdings with ticker, quantity, basis, and current value.
 
+**GET /api/investment-performance** — Return percent and value of one security by date. Requires `security_id`; filter by `start` and `end`.
+
+## Credit Score
+
+**GET /api/credit** — Credit score history.
+
 ## Net Worth
 
 **GET /api/net-worth** — Historical net worth from account snapshots. Filter by `start` and `end`.
 
-**GET /api/snapshots** — Raw account balance snapshots over time.
+**GET /api/snapshots** — Raw account balance snapshots over time. Filter by `start` and `end`.
+
+**GET /api/snapshots/breakdown** — Monthly assets, liabilities, net worth and investments.
 
 ## Cashflow
 
@@ -162,6 +170,8 @@ This is your personal Monte Carlo — one chart, multiple futures.
 
 **GET /api/sync-status** — Check last sync time and status.
 
+**GET /api/sync-history** — Your last 50 syncs.
+
 ## Configuration
 
 **POST /api/config** — Pick your vault credential (`vault_credential_id`, the only key that can be set).
@@ -173,38 +183,71 @@ by Monarch's ids stay with whoever synced them first.
 
 ## Build & Deploy
 
+Run these in the app's repository, `~/localitas-app-mmoney`.
+
+### Version
+
+```bash
+bin/mmoney-server --version
+```
+
 ### Build from source
 
 ```bash
-cd apps/mmoney && go build -o bin/mmoney-server ./cmd/mmoney-server
+# Native binary
+go build -o bin/mmoney-server ./cmd/mmoney-server
+
+# Native binary plus the Linux amd64 binary the Docker image is built from (mmoney-server-linux-amd64)
+make build-linux
+
+# bin/mmoney-server-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}
+make build-all
 ```
 
-### Cross-compile
+`make lint` runs gofmt and go vet; `make test` runs them and then the tests (with the `fts5` build tag). `make build` runs only the lint step.
+
+### Run natively
 
 ```bash
-# Linux amd64
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/mmoney-server-linux-amd64 ./cmd/mmoney-server
-
-# Linux arm64
-GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath -o bin/mmoney-server-linux-arm64 ./cmd/mmoney-server
+make start   # writes the launchd service com.localitas.app.mmoney for bin/mmoney-server and loads it on port 9220
+make stop
+make logs    # follows ~/.localitas/logs/mmoney/stdout.log
 ```
 
-### Obfuscated release (all platforms)
-
-```bash
-make build-release
-```
+The app announces itself to core when it starts, and core serves it at `/apps/ext/mmoney/`.
 
 ### Docker
 
 ```bash
-./mmoney-server docker-build
+make build-docker   # builds the Linux binary and the mmoney:latest image
+make start-docker   # runs container "mmoney" on port 9220, labelled localitas.app=true
+make stop-docker
+make logs-docker
 ```
+
+Core registers containers labelled `localitas.app=true` once Docker reports them healthy.
+
+### Publish
+
+```bash
+# Run the tests, build the image, push ghcr.io/localitas/localitas-app-mmoney:latest and :<VERSION>
+make docker-push
+
+# Build dist/mmoney-server-darwin-arm64 and dist/mmoney-server-darwin-amd64
+# and create GitHub release vX.Y.Z on this repository with them
+make release VERSION=vX.Y.Z
+```
+
+`VERSION` defaults to `1.0.0` (set at the top of the Makefile), so pass it explicitly.
 
 ### Download
 
-Pre-built binaries are available on the [GitHub releases page](https://github.com/localitas/localitas/releases).
+Pre-built macOS binaries are on the [releases page](https://github.com/localitas/localitas-app-mmoney/releases):
+- `mmoney-server-darwin-arm64` (Apple Silicon)
+- `mmoney-server-darwin-amd64` (Intel)
 
-```bash
-gh release download --repo localitas/localitas --pattern 'mmoney-server-*'
-```
+Every push to `main` publishes a release: `.github/workflows/release.yml` runs the tests and releases both binaries as `v0.1.<commit count>.<UTC timestamp>`. `make release` publishes one by hand.
+
+Download with the GitHub CLI:
+
+    gh release download --repo localitas/localitas-app-mmoney --pattern 'mmoney-server-*'
