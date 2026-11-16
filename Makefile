@@ -10,20 +10,19 @@ PLIST_FILE := $(HOME)/Library/LaunchAgents/$(PLIST_NAME).plist
 LOG_DIR := $(HOME)/.localitas/logs/mmoney
 BIN_PATH := $(shell pwd)/bin/mmoney-server
 WORK_DIR := $(shell pwd)
-VERSION ?= 1.0.0
-COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 LDFLAGS := -ldflags "-s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT)"
 
 # ── Build & Test ──────────────────────────────────────────────
 
 build: lint
-
-build-linux: lint
-	@mkdir -p bin
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath \
-		-o mmoney-server-linux-amd64 ./cmd/mmoney-server
 	@mkdir -p bin
 	go build -o bin/mmoney-server ./cmd/mmoney-server
+
+build-linux: lint
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-s -w" -trimpath \
+		-o mmoney-server-linux-amd64 ./cmd/mmoney-server
 
 test: lint
 	CGO_ENABLED=1 go test -tags fts5 -v ./...
@@ -121,9 +120,6 @@ docker-push: test build-docker
 	@echo "✅ Pushed $(GHCR_IMAGE):latest and $(GHCR_IMAGE):$(VERSION)"
 
 # ── Release ───────────────────────────────────────────────────
-
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 build-release: lint
 	@mkdir -p dist
