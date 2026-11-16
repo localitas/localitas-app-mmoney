@@ -194,22 +194,22 @@ bin/mmoney-server --version
 ### Build from source
 
 ```bash
-# Native binary
-go build -o bin/mmoney-server ./cmd/mmoney-server
+# Native binary (bin/mmoney-server)
+make build
 
-# Native binary plus the Linux amd64 binary the Docker image is built from (mmoney-server-linux-amd64)
+# Linux amd64 binary the Docker image is built from (mmoney-server-linux-amd64)
 make build-linux
 
 # bin/mmoney-server-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}
 make build-all
 ```
 
-`make lint` runs gofmt and go vet; `make test` runs them and then the tests (with the `fts5` build tag). `make build` runs only the lint step.
+`make build` and `make build-linux` run `make lint` (gofmt and go vet) first; `make test` runs the lint step and then the tests (with the `fts5` build tag).
 
 ### Run natively
 
 ```bash
-make start   # writes the launchd service com.localitas.app.mmoney for bin/mmoney-server and loads it on port 9220
+make start   # builds bin/mmoney-server, writes the launchd service com.localitas.app.mmoney for bin/mmoney-server and loads it on port 9220
 make stop
 make logs    # follows ~/.localitas/logs/mmoney/stdout.log
 ```
