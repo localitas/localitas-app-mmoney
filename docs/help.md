@@ -197,7 +197,8 @@ bin/mmoney-server --version
 # Native binary (bin/mmoney-server)
 make build
 
-# Linux amd64 binary the Docker image is built from (mmoney-server-linux-amd64)
+# Linux binary the Docker image is built from, for the Docker daemon's
+# architecture (mmoney-server-linux-arm64 on Apple silicon); LINUX_ARCH=amd64 overrides
 make build-linux
 
 # bin/mmoney-server-{linux-amd64,linux-arm64,darwin-arm64,darwin-amd64}
