@@ -33,7 +33,7 @@ cd ~/localitas-app-mmoney
 
 # Build and run locally
 make build
-./bin/mmoney-server serve --listen :8000
+./bin/mmoney-server serve --listen 127.0.0.1:8000
 
 # Or via launchd (macOS)
 make start
