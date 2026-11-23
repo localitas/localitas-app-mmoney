@@ -41,6 +41,24 @@ type SecurityPerformance struct {
 	Points     []SecurityPerformancePoint `json:"points"`
 }
 
+// portfolioVariables are Web_GetPortfolio's variables: an empty input.
+type portfolioVariables struct {
+	PortfolioInput struct{} `json:"portfolioInput"`
+}
+
+// securityPerformanceInput is the input of
+// Web_GetInvestmentsHoldingDrawerHistoricalPerformance, in key order as
+// the map it replaced marshaled it.
+type securityPerformanceInput struct {
+	EndDate     string   `json:"endDate"`
+	SecurityIDs []string `json:"securityIds"`
+	StartDate   string   `json:"startDate"`
+}
+
+type securityPerformanceVariables struct {
+	Input securityPerformanceInput `json:"input"`
+}
+
 func (s *Service) GetInvestmentPortfolio(ctx context.Context) (*InvestmentPortfolio, error) {
 	var resp struct {
 		Portfolio struct {
@@ -68,12 +86,11 @@ func (s *Service) GetInvestmentPortfolio(ctx context.Context) (*InvestmentPortfo
 		} `json:"portfolio"`
 	}
 
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "Web_GetPortfolio",
-		Query:         GetInvestmentPortfolioQuery,
-		Variables:     map[string]interface{}{"portfolioInput": map[string]interface{}{}},
-	}, &resp)
+	req, err := monarchgql.NewRequest("Web_GetPortfolio", GetInvestmentPortfolioQuery, portfolioVariables{})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 
@@ -117,18 +134,17 @@ func (s *Service) GetSecurityPerformance(ctx context.Context, securityIDs []stri
 		} `json:"securityHistoricalPerformance"`
 	}
 
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "Web_GetInvestmentsHoldingDrawerHistoricalPerformance",
-		Query:         GetSecurityPerformanceQuery,
-		Variables: map[string]interface{}{
-			"input": map[string]interface{}{
-				"securityIds": securityIDs,
-				"startDate":   startDate,
-				"endDate":     endDate,
-			},
+	req, err := monarchgql.NewRequest("Web_GetInvestmentsHoldingDrawerHistoricalPerformance", GetSecurityPerformanceQuery, securityPerformanceVariables{
+		Input: securityPerformanceInput{
+			EndDate:     endDate,
+			SecurityIDs: securityIDs,
+			StartDate:   startDate,
 		},
-	}, &resp)
+	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 

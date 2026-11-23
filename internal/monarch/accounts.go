@@ -13,6 +13,26 @@ var GetAccountHistoryQuery = queries.Get("accounts/history.graphql")
 var GetAggregateSnapshotsQuery = queries.Get("accounts/aggregate_snapshots.graphql")
 var GetSnapshotsByAccountTypeQuery = queries.Get("accounts/snapshots_by_type.graphql")
 
+// The variables of the account queries. Fields are in key order, as the
+// maps these replaced marshaled them.
+
+type snapshotsByAccountTypeVariables struct {
+	StartDate string `json:"startDate"`
+	Timeframe string `json:"timeframe"`
+}
+
+// snapshotFilters are GetAccountHistory's and GetAggregateSnapshots'
+// filters; one not set is left out.
+type snapshotFilters struct {
+	AccountType string `json:"accountType,omitempty"`
+	EndDate     string `json:"endDate,omitempty"`
+	StartDate   string `json:"startDate,omitempty"`
+}
+
+type snapshotFiltersVariables struct {
+	Filters snapshotFilters `json:"filters"`
+}
+
 type AccountTypeSnapshot struct {
 	AccountType string  `json:"account_type"`
 	Month       string  `json:"month"`
@@ -37,15 +57,14 @@ func (s *Service) GetSnapshotsByAccountType(ctx context.Context, startDate, time
 		} `json:"accountTypes"`
 	}
 
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "GetSnapshotsByAccountType",
-		Query:         GetSnapshotsByAccountTypeQuery,
-		Variables: map[string]interface{}{
-			"startDate": startDate,
-			"timeframe": timeframe,
-		},
-	}, &resp)
+	req, err := monarchgql.NewRequest("GetSnapshotsByAccountType", GetSnapshotsByAccountTypeQuery, snapshotsByAccountTypeVariables{
+		StartDate: startDate,
+		Timeframe: timeframe,
+	})
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, nil, err
 	}
 
@@ -190,22 +209,13 @@ func (s *Service) GetAccountHistory(ctx context.Context, startDate, endDate stri
 		} `json:"aggregateSnapshots"`
 	}
 
-	variables := map[string]interface{}{
-		"filters": map[string]interface{}{},
-	}
-	if startDate != "" {
-		variables["filters"].(map[string]interface{})["startDate"] = startDate
-	}
-	if endDate != "" {
-		variables["filters"].(map[string]interface{})["endDate"] = endDate
-	}
-
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "GetAccountHistory",
-		Query:         GetAccountHistoryQuery,
-		Variables:     variables,
-	}, &resp)
+	req, err := monarchgql.NewRequest("GetAccountHistory", GetAccountHistoryQuery, snapshotFiltersVariables{
+		Filters: snapshotFilters{StartDate: startDate, EndDate: endDate},
+	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 
@@ -228,23 +238,13 @@ func (s *Service) GetAggregateSnapshots(ctx context.Context, startDate, endDate,
 		} `json:"aggregateSnapshots"`
 	}
 
-	filters := map[string]interface{}{}
-	if startDate != "" {
-		filters["startDate"] = startDate
-	}
-	if endDate != "" {
-		filters["endDate"] = endDate
-	}
-	if accountType != "" {
-		filters["accountType"] = accountType
-	}
-
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "GetAggregateSnapshots",
-		Query:         GetAggregateSnapshotsQuery,
-		Variables:     map[string]interface{}{"filters": filters},
-	}, &resp)
+	req, err := monarchgql.NewRequest("GetAggregateSnapshots", GetAggregateSnapshotsQuery, snapshotFiltersVariables{
+		Filters: snapshotFilters{StartDate: startDate, EndDate: endDate, AccountType: accountType},
+	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 

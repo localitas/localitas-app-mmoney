@@ -26,10 +26,22 @@ func UserAgent() string {
 const maxResponseBody = 50 * 1024 * 1024
 const maxRetries = 3
 
+// Request is one GraphQL operation. Variables are the JSON of the
+// operation's variables struct (see NewRequest); nil sends null.
 type Request struct {
-	OperationName string                 `json:"operationName"`
-	Query         string                 `json:"query"`
-	Variables     map[string]interface{} `json:"variables"`
+	OperationName string          `json:"operationName"`
+	Query         string          `json:"query"`
+	Variables     json.RawMessage `json:"variables"`
+}
+
+// NewRequest is operation's request with variables, the struct whose
+// fields are the variables query declares.
+func NewRequest[V any](operation, query string, variables V) (*Request, error) {
+	b, err := json.Marshal(variables)
+	if err != nil {
+		return nil, monarcherr.New(monarcherr.InternalError, "failed to marshal "+operation+" variables", monarcherr.CatInternal, false, err)
+	}
+	return &Request{OperationName: operation, Query: query, Variables: b}, nil
 }
 
 type Client struct {

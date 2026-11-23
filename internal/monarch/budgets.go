@@ -17,6 +17,13 @@ type Budget struct {
 	Actual       float64 `json:"actual"`
 }
 
+// dateRangeVariables are GetJointPlanningData's variables, in key order as
+// the map they replaced marshaled them.
+type dateRangeVariables struct {
+	EndDate   string `json:"endDate"`
+	StartDate string `json:"startDate"`
+}
+
 func (s *Service) ListBudgets(ctx context.Context, startDate, endDate string) ([]Budget, error) {
 	var resp struct {
 		BudgetData struct {
@@ -34,15 +41,14 @@ func (s *Service) ListBudgets(ctx context.Context, startDate, endDate string) ([
 		} `json:"budgetData"`
 	}
 
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "GetJointPlanningData",
-		Query:         GetBudgetsQuery,
-		Variables: map[string]interface{}{
-			"startDate": startDate,
-			"endDate":   endDate,
-		},
-	}, &resp)
+	req, err := monarchgql.NewRequest("GetJointPlanningData", GetBudgetsQuery, dateRangeVariables{
+		StartDate: startDate,
+		EndDate:   endDate,
+	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 

@@ -22,7 +22,7 @@ func (h *handler) handleListAccounts(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list accounts: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"accounts": accounts})
+	writeJSON(w, r, http.StatusOK, accountsResponse{Accounts: accounts})
 }
 
 func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request) {
@@ -49,11 +49,11 @@ func (h *handler) handleListTransactions(w http.ResponseWriter, r *http.Request)
 		writeErr(w, r, http.StatusInternalServerError, "failed to list transactions: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"transactions": txs,
-		"total":        total,
-		"limit":        limit,
-		"offset":       offset,
+	writeJSON(w, r, http.StatusOK, transactionsResponse{
+		Transactions: txs,
+		Total:        total,
+		Limit:        limit,
+		Offset:       offset,
 	})
 }
 
@@ -63,7 +63,7 @@ func (h *handler) handleListCategories(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list categories: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"categories": cats})
+	writeJSON(w, r, http.StatusOK, categoriesResponse{Categories: cats})
 }
 
 func (h *handler) handleListBudgets(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +73,7 @@ func (h *handler) handleListBudgets(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list budgets: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"budgets": budgets})
+	writeJSON(w, r, http.StatusOK, budgetsResponse{Budgets: budgets})
 }
 
 func (h *handler) handleListRecurring(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +82,7 @@ func (h *handler) handleListRecurring(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list recurring: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"recurring": recurring})
+	writeJSON(w, r, http.StatusOK, recurringResponse{Recurring: recurring})
 }
 
 func (h *handler) handleListInvestments(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +91,7 @@ func (h *handler) handleListInvestments(w http.ResponseWriter, r *http.Request) 
 		writeErr(w, r, http.StatusInternalServerError, "failed to list investments: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"investments": investments})
+	writeJSON(w, r, http.StatusOK, investmentsResponse{Investments: investments})
 }
 
 func (h *handler) handleListCreditScores(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +100,7 @@ func (h *handler) handleListCreditScores(w http.ResponseWriter, r *http.Request)
 		writeErr(w, r, http.StatusInternalServerError, "failed to list credit scores: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"credit_scores": scores})
+	writeJSON(w, r, http.StatusOK, creditScoresResponse{CreditScores: scores})
 }
 
 func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,7 @@ func (h *handler) handleInvestmentPerformance(w http.ResponseWriter, r *http.Req
 		writeErr(w, r, http.StatusInternalServerError, "failed to get investment performance: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"performance": perf})
+	writeJSON(w, r, http.StatusOK, performanceResponse{Performance: perf})
 }
 
 func (h *handler) handleAssetLiabilitySnapshots(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +126,7 @@ func (h *handler) handleAssetLiabilitySnapshots(w http.ResponseWriter, r *http.R
 		writeErr(w, r, http.StatusInternalServerError, "failed to get snapshots: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
+	writeJSON(w, r, http.StatusOK, assetLiabilitySnapshotsResponse{Snapshots: snapshots})
 }
 
 func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +137,7 @@ func (h *handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to list snapshots: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"snapshots": snapshots})
+	writeJSON(w, r, http.StatusOK, snapshotsResponse{Snapshots: snapshots})
 }
 
 func (h *handler) handleNetWorth(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +152,7 @@ func (h *handler) handleNetWorth(w http.ResponseWriter, r *http.Request) {
 	for i, s := range snapshots {
 		points[i] = NetWorthPoint(s)
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"net_worth": points})
+	writeJSON(w, r, http.StatusOK, netWorthResponse{NetWorth: points})
 }
 
 func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
@@ -185,13 +185,13 @@ func (h *handler) handleCashflow(w http.ResponseWriter, r *http.Request) {
 		savingsRate = savings / income * 100
 	}
 
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{
-		"income":       income,
-		"expense":      expense,
-		"savings":      savings,
-		"savings_rate": savingsRate,
-		"start":        startDate,
-		"end":          endDate,
+	writeJSON(w, r, http.StatusOK, cashflowResponse{
+		Income:      income,
+		Expense:     expense,
+		Savings:     savings,
+		SavingsRate: savingsRate,
+		Start:       startDate,
+		End:         endDate,
 	})
 }
 
@@ -206,7 +206,7 @@ func (h *handler) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "search failed: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"transactions": txs})
+	writeJSON(w, r, http.StatusOK, searchResponse{Transactions: txs})
 }
 
 func (h *handler) handleFIRE(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +256,7 @@ func (h *handler) handleSync(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "sync failed: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"status": "ok"})
+	writeJSON(w, r, http.StatusOK, statusResponse{Status: "ok"})
 }
 
 // handleSyncAll is core's scheduled sync: every user who picked a
@@ -288,7 +288,7 @@ func (h *handler) handleSyncHistory(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get sync history: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"history": history})
+	writeJSON(w, r, http.StatusOK, syncHistoryResponse{History: history})
 }
 
 // handleSetConfig saves the requesting user's choice of the vault
@@ -341,7 +341,7 @@ func (h *handler) handleSetConfig(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.app.forgetSession(userID)
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"key": body.Key, "value": body.Value})
+	writeJSON(w, r, http.StatusOK, configResponse{Key: body.Key, Value: body.Value})
 }
 
 func (h *handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
@@ -351,7 +351,7 @@ func (h *handler) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusInternalServerError, "failed to get config: %v", err)
 		return
 	}
-	writeJSON(w, r, http.StatusOK, map[string]interface{}{"key": key, "value": value})
+	writeJSON(w, r, http.StatusOK, configResponse{Key: key, Value: value})
 }
 
 func writeJSON(w http.ResponseWriter, r *http.Request, status int, v interface{}) {
