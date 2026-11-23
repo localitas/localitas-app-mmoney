@@ -207,7 +207,7 @@ func TestHandlerSwagger(t *testing.T) {
 	if rr.Code != 200 {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
-	var doc APIDoc
+	var doc client.APISpec
 	json.NewDecoder(rr.Body).Decode(&doc)
 	if doc.AppName != "MMoney" {
 		t.Fatalf("expected app name MMoney, got %s", doc.AppName)
