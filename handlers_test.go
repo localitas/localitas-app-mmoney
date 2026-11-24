@@ -24,6 +24,12 @@ func setupTestApp(t *testing.T) *App {
 
 func doRequest(t *testing.T, mux *http.ServeMux, method, path string, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	return doRequestWith(t, mux, method, path, body, "")
+}
+
+// doRequestWith is doRequest asking for the answer in accept's format.
+func doRequestWith(t *testing.T, mux *http.ServeMux, method, path, body, accept string) *httptest.ResponseRecorder {
+	t.Helper()
 	var req *http.Request
 	if body != "" {
 		req = httptest.NewRequest(method, path, strings.NewReader(body))
@@ -32,6 +38,9 @@ func doRequest(t *testing.T, mux *http.ServeMux, method, path string, body strin
 		req = httptest.NewRequest(method, path, nil)
 	}
 	req.Header.Set("Authorization", "Bearer "+identity("admin-user", "admin"))
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, req)
 	return rr

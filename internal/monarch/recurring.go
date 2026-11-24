@@ -20,6 +20,15 @@ type RecurringTransaction struct {
 	AccountName  string  `json:"account_name"`
 }
 
+// recurringVariables are Web_GetUpcomingRecurringTransactionItems'
+// variables, with no filters set, in key order as the map they replaced
+// marshaled them.
+type recurringVariables struct {
+	EndDate   string   `json:"endDate"`
+	Filters   struct{} `json:"filters"`
+	StartDate string   `json:"startDate"`
+}
+
 func (s *Service) ListRecurring(ctx context.Context, startDate, endDate string) ([]RecurringTransaction, error) {
 	var resp struct {
 		RecurringTransactionItems []struct {
@@ -43,16 +52,14 @@ func (s *Service) ListRecurring(ctx context.Context, startDate, endDate string) 
 		} `json:"recurringTransactionItems"`
 	}
 
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "Web_GetUpcomingRecurringTransactionItems",
-		Query:         GetRecurringQuery,
-		Variables: map[string]interface{}{
-			"startDate": startDate,
-			"endDate":   endDate,
-			"filters":   map[string]interface{}{},
-		},
-	}, &resp)
+	req, err := monarchgql.NewRequest("Web_GetUpcomingRecurringTransactionItems", GetRecurringQuery, recurringVariables{
+		StartDate: startDate,
+		EndDate:   endDate,
+	})
 	if err != nil {
+		return nil, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, err
 	}
 

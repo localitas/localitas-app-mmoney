@@ -41,6 +41,23 @@ type ListTransactionsOptions struct {
 	EndDate   string
 }
 
+// transactionFilters are GetTransactionsList's filters, in key order as
+// the map they replaced marshaled them; a date not set is left out.
+type transactionFilters struct {
+	Accounts   []string `json:"accounts"`
+	Categories []string `json:"categories"`
+	EndDate    string   `json:"endDate,omitempty"`
+	Search     string   `json:"search"`
+	StartDate  string   `json:"startDate,omitempty"`
+	Tags       []string `json:"tags"`
+}
+
+type transactionsVariables struct {
+	Filters transactionFilters `json:"filters"`
+	Limit   int                `json:"limit"`
+	Offset  int                `json:"offset"`
+}
+
 func (s *Service) ListTransactions(ctx context.Context, opts ListTransactionsOptions) ([]Transaction, int, error) {
 	if opts.Limit <= 0 {
 		opts.Limit = 100
@@ -90,29 +107,22 @@ func (s *Service) ListTransactions(ctx context.Context, opts ListTransactionsOpt
 		} `json:"allTransactions"`
 	}
 
-	filters := map[string]interface{}{
-		"search":     opts.Search,
-		"categories": []string{},
-		"accounts":   []string{},
-		"tags":       []string{},
-	}
-	if opts.StartDate != "" {
-		filters["startDate"] = opts.StartDate
-	}
-	if opts.EndDate != "" {
-		filters["endDate"] = opts.EndDate
-	}
-
-	err := s.Client.Do(ctx, &monarchgql.Request{
-		OperationName: "GetTransactionsList",
-		Query:         GetTransactionsQuery,
-		Variables: map[string]interface{}{
-			"offset":  opts.Offset,
-			"limit":   opts.Limit,
-			"filters": filters,
+	req, err := monarchgql.NewRequest("GetTransactionsList", GetTransactionsQuery, transactionsVariables{
+		Filters: transactionFilters{
+			Accounts:   []string{},
+			Categories: []string{},
+			EndDate:    opts.EndDate,
+			Search:     opts.Search,
+			StartDate:  opts.StartDate,
+			Tags:       []string{},
 		},
-	}, &resp)
+		Limit:  opts.Limit,
+		Offset: opts.Offset,
+	})
 	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.Client.Do(ctx, req, &resp); err != nil {
 		return nil, 0, err
 	}
 
